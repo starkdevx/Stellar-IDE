@@ -52,9 +52,47 @@ export default function DeployPanel({
     checkConnection();
   }, []);
 
+  const fetchBalance = async (userAddress: string) => {
+    try {
+      const horizonServer = new StellarSdk.Horizon.Server(horizonUrl);
+      const accountDetails = await horizonServer.loadAccount(userAddress);
+      const native = accountDetails.balances.find((b) => b.asset_type === "native");
+      setBalance(native ? parseFloat(native.balance).toLocaleString() : "0");
+    } catch (err: any) {
+      // 404 means account is not created/funded yet
+      setBalance("0 (Unfunded)");
+    }
+  };
 
-
-
+  const handleConnectWallet = async () => {
+    try {
+      const hasFreighter = await isConnected();
+      const isCon = typeof hasFreighter === "boolean" ? hasFreighter : (hasFreighter && (hasFreighter as any).isConnected);
+      if (!isCon) {
+        alert("Freighter Wallet extension is not installed or enabled in this browser.");
+        return;
+      }
+      
+      addLog("Requesting access from Freighter Wallet...", "info");
+      const accessRes = await requestAccess();
+      if (accessRes && (accessRes as any).error) {
+        throw new Error((accessRes as any).error);
+      }
+      
+      const addrStr = typeof accessRes === "string" ? accessRes : (accessRes && (accessRes as any).address);
+      if (addrStr) {
+        setAddress(addrStr);
+        setWalletConnected(true);
+        addLog(`Connected Freighter Wallet: ${addrStr}`, "success");
+        fetchBalance(addrStr);
+      } else {
+        throw new Error("Could not retrieve wallet address. Make sure Freighter is unlocked and authorized.");
+      }
+    } catch (err: any) {
+      console.error(err);
+      addLog(`Wallet connection failed: ${err.message}`, "error");
+    }
+  };
 
   const handleFundAccount = async () => {
     if (!address || funding) return;
