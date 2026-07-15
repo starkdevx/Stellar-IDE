@@ -1,0 +1,216 @@
+"use client";
+
+import React, { useState } from "react";
+import * as StellarSdk from "@stellar/stellar-sdk";
+import { getAddress } from "@stellar/freighter-api";
+import { Play, Code, CheckCircle, AlertTriangle } from "lucide-react";
+
+interface InteractPanelProps {
+  abi: any[] | null;
+  contractId: string | null;
+  onContractIdChange: (contractId: string) => void;
+  addLog: (text: string, type?: "info" | "error" | "success" | "warning") => void;
+}
+
+export default function InteractPanel({
+  abi,
+  contractId,
+  onContractIdChange,
+  addLog,
+}: InteractPanelProps) {
+  const [manualContractId, setManualContractId] = useState("");
+  const [inputValues, setInputValues] = useState<{ [key: string]: string }>({});
+  const [invoking, setInvoking] = useState<{ [funcName: string]: boolean }>({});
+  const [outputs, setOutputs] = useState<{ [funcName: string]: string }>({});
+
+  const rpcUrl = "https://soroban-testnet.stellar.org";
+  const horizonUrl = "https://horizon-testnet.stellar.org";
+
+  const handleManualContractIdSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (manualContractId.trim().startsWith("C") && manualContractId.trim().length === 56) {
+      onContractIdChange(manualContractId.trim());
+      addLog(`Loaded contract ID: ${manualContractId.trim()}`, "success");
+      setManualContractId("");
+    } else {
+      alert("Invalid Contract ID. Must be a 56-character string starting with C.");
+    }
+  };
+
+  const handleInputChange = (funcName: string, paramName: string, val: string) => {
+    setInputValues((prev) => ({
+      ...prev,
+      [`${funcName}-${paramName}`]: val,
+    }));
+  };
+
+  // Maps UI input to ScVal
+  const parseInputToScVal = (value: any, type: any): any => {
+    if (typeof type === "string") {
+      switch (type.toLowerCase()) {
+        case "string":
+          return StellarSdk.xdr.ScVal.scvString(String(value));
+        case "symbol":
+          return StellarSdk.xdr.ScVal.scvSymbol(String(value));
+        case "u32":
+          return StellarSdk.xdr.ScVal.scvU32(Number(value));
+        case "i32":
+          return StellarSdk.xdr.ScVal.scvI32(Number(value));
+        case "u64":
+          return StellarSdk.nativeToScVal(BigInt(value));
+        case "i64":
+          return StellarSdk.nativeToScVal(BigInt(value));
+        case "bool":
+          return StellarSdk.xdr.ScVal.scvBool(value === "true" || value === true || value === "1");
+        case "address":
+          return StellarSdk.xdr.ScVal.scvAddress(new StellarSdk.Address(String(value)).toScAddress());
+        default:
+          return StellarSdk.nativeToScVal(value);
+      }
+    } else if (type && typeof type === "object") {
+      if ("vec" in type) {
+        // Handle Vector types
+        try {
+          const arr = Array.isArray(value) ? value : JSON.parse(value);
+          const parsedElements = arr.map((item: any) => parseInputToScVal(item, type.vec.element_type));
+          return StellarSdk.xdr.ScVal.scvVec(parsedElements);
+        } catch {
+          // If JSON parse fails, split by comma
+          const arr = String(value).split(",").map(v => v.trim());
+          const parsedElements = arr.map((item: any) => parseInputToScVal(item, type.vec.element_type));
+          return StellarSdk.xdr.ScVal.scvVec(parsedElements);
+        }
+      }
+    }
+    return StellarSdk.nativeToScVal(value);
+  };
+
+ 
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+      <div className="panel-title">
+        <span>Interact with Contract</span>
+      </div>
+
+      {/* Contract ID Header / Setup */}
+      {!contractId ? (
+        <form onSubmit={handleManualContractIdSubmit} className="input-group">
+          <label className="input-label">Load Deployed Contract ID</label>
+          <input
+            type="text"
+            className="form-control form-control-mono"
+            placeholder="e.g. CC5... or CA..."
+            value={manualContractId}
+            onChange={(e) => setManualContractId(e.target.value)}
+          />
+          <button type="submit" className="btn btn-secondary" style={{ marginTop: "6px" }}>
+            Load Contract
+          </button>
+        </form>
+      ) : (
+        <div style={{ background: "rgba(255, 255, 255, 0.02)", padding: "10px", borderRadius: "6px", border: "1px solid rgba(255, 255, 255, 0.05)", display: "flex", flexDirection: "column", gap: "6px" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.75rem", color: "hsl(var(--text-secondary))" }}>
+            <span style={{ fontWeight: 600 }}>Active Contract:</span>
+            <button
+              onClick={() => onContractIdChange("")}
+              style={{ background: "transparent", border: "none", color: "hsl(var(--accent-error))", cursor: "pointer", fontSize: "0.7rem" }}
+            >
+              Clear
+            </button>
+          </div>
+          <span style={{ fontSize: "0.75rem", fontFamily: "var(--font-mono)", color: "hsl(var(--accent-cyan))", wordBreak: "break-all" }}>
+            {contractId}
+          </span>
+        </div>
+      )}
+
+      {/* Methods Area */}
+      <div style={{ borderTop: "1px solid rgba(255, 255, 255, 0.05)", paddingTop: "14px" }}>
+        {!abi || abi.length === 0 ? (
+          <div style={{ display: "flex", alignItems: "center", gap: "8px", padding: "12px", background: "rgba(255, 255, 255, 0.02)", border: "1px solid rgba(255, 255, 255, 0.06)", borderRadius: "6px", color: "hsl(var(--text-secondary))", fontSize: "0.75rem", lineHeight: "1.4" }}>
+            <Code size={16} style={{ flexShrink: 0, color: "hsl(var(--accent-violet))" }} />
+            <span>Compile your contract and deploy it (or load one manually) to render methods.</span>
+          </div>
+        ) : !contractId ? (
+          <div style={{ display: "flex", alignItems: "center", gap: "8px", padding: "12px", background: "rgba(245, 158, 11, 0.05)", border: "1px solid rgba(245, 158, 11, 0.15)", borderRadius: "6px", color: "hsl(var(--accent-warning))", fontSize: "0.75rem", lineHeight: "1.4" }}>
+            <AlertTriangle size={16} style={{ flexShrink: 0 }} />
+            <span>Please deploy the contract or load its ID to execute functions.</span>
+          </div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+            {abi
+              .filter((item) => "function_v0" in item)
+              .map((item) => {
+                const func = item.function_v0;
+                const isPending = invoking[func.name] || false;
+                
+                return (
+                  <div key={func.name} className="method-card">
+                    <div className="method-name">{func.name}</div>
+                    
+                    {/* Render inputs */}
+                    {func.inputs && func.inputs.length > 0 && (
+                      <div style={{ display: "flex", flexDirection: "column", gap: "10px", marginBottom: "12px" }}>
+                        {func.inputs.map((input: any) => {
+                          const inputTypeStr = typeof input.type_ === "object" ? JSON.stringify(input.type_) : String(input.type_);
+                          
+                          return (
+                            <div key={input.name} className="input-group" style={{ margin: 0 }}>
+                              <label className="input-label" style={{ display: "flex", justifyContent: "space-between" }}>
+                                <span>{input.name}</span>
+                                <span style={{ color: "hsl(var(--text-muted))" }}>({inputTypeStr})</span>
+                              </label>
+                              <input
+                                type="text"
+                                className="form-control form-control-mono"
+                                placeholder={inputTypeStr.includes("vec") ? `e.g. ["val1", "val2"]` : `value`}
+                                value={inputValues[`${func.name}-${input.name}`] || ""}
+                                onChange={(e) => handleInputChange(func.name, input.name, e.target.value)}
+                              />
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    {/* Invoke Button */}
+                    <button
+                      className="btn btn-secondary"
+                      onClick={() => handleInvoke(func.name, func.inputs)}
+                      disabled={isPending}
+                      style={{ width: "100%", justifyContent: "center", gap: "6px", padding: "6px 12px", fontSize: "0.75rem" }}
+                    >
+                      {isPending ? (
+                        <>
+                          <div className="spinner"></div>
+                          <span>Executing...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Play size={12} fill="currentColor" />
+                          <span>Transact</span>
+                        </>
+                      )}
+                    </button>
+
+                    {/* Outputs display */}
+                    {outputs[func.name] !== undefined && (
+                      <div style={{ marginTop: "12px", background: "rgba(0,0,0,0.3)", padding: "8px", borderRadius: "4px", border: "1px solid rgba(255,255,255,0.04)" }}>
+                        <div style={{ fontSize: "0.65rem", color: "hsl(var(--text-muted))", marginBottom: "4px", display: "flex", alignItems: "center", gap: "4px" }}>
+                          <CheckCircle size={10} style={{ color: "hsl(var(--accent-success))" }} /> Return Value:
+                        </div>
+                        <pre style={{ fontSize: "0.7rem", fontFamily: "var(--font-mono)", color: "hsl(var(--text-primary))", whiteSpace: "pre-wrap" }}>
+                          {outputs[func.name]}
+                        </pre>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
