@@ -23,7 +23,20 @@ export default function FileTree({
   const [newFileName, setNewFileName] = useState("");
   const [isCreating, setIsCreating] = useState(false);
 
- 
+  const handleSubmitCreate = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newFileName.trim()) return;
+    
+    // Default to src/ if no folder specified and name is a rust file (except Cargo.toml)
+    let path = newFileName.trim();
+    if (!path.startsWith("src/") && path !== "Cargo.toml" && !path.includes("/")) {
+      path = `src/${path}`;
+    }
+    
+    onCreateFile(path);
+    setNewFileName("");
+    setIsCreating(false);
+  };
 
   // Group files by directory
   const renderFileTree = () => {
