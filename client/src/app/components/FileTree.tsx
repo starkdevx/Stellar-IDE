@@ -23,9 +23,55 @@ export default function FileTree({
   const [newFileName, setNewFileName] = useState("");
   const [isCreating, setIsCreating] = useState(false);
 
+ 
 
-
-
+  // Group files by directory
+  const renderFileTree = () => {
+    const filePaths = Object.keys(files).sort();
+    
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
+        {filePaths.map((path) => {
+          const isActive = path === activeFile;
+          const isCargo = path === "Cargo.toml";
+          
+          return (
+            <div
+              key={path}
+              className={`file-item ${isActive ? "active" : ""}`}
+              onClick={() => onSelectFile(path)}
+            >
+              <div style={{ display: "flex", alignSelf: "center", alignItems: "center", gap: "8px" }}>
+                {isCargo ? (
+                  <File size={16} className="text-secondary" style={{ color: "hsl(var(--accent-cyan))" }} />
+                ) : (
+                  <File size={16} style={{ color: "hsl(var(--text-secondary))" }} />
+                )}
+                <span style={{ fontSize: "0.8rem" }}>{path}</span>
+              </div>
+              
+              {/* Do not allow deleting core files to avoid breaking the build */}
+              {path !== "src/lib.rs" && path !== "Cargo.toml" && (
+                <div className="file-actions" onClick={(e) => e.stopPropagation()}>
+                  <button
+                    className="file-btn"
+                    onClick={() => {
+                      if (confirm(`Delete ${path}?`)) {
+                        onDeleteFile(path);
+                      }
+                    }}
+                    title="Delete File"
+                  >
+                    <Trash2 size={13} />
+                  </button>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "12px", height: "100%" }}>
