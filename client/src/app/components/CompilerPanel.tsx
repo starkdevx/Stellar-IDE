@@ -16,7 +16,51 @@ export default function CompilerPanel({
 }: CompilerPanelProps) {
   const [compiling, setCompiling] = useState(false);
 
+  const handleCompile = async () => {
+    if (compiling) return;
+    setCompiling(true);
+    addLog("Initiating contract compilation...", "info");
 
+    const compilerUrl = process.env.NEXT_PUBLIC_COMPILER_URL || "http://localhost:5000";
+
+    try {
+      const response = await fetch(`${compilerUrl}/api/compile`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ files }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        setCompiling(false);
+        addLog("Compilation failed!", "error");
+        if (data.logs) {
+          addLog(data.logs, "error");
+        }
+        if (data.error) {
+          addLog(`Error Detail: ${data.error}`, "error");
+        }
+        return;
+      }
+
+      addLog("Compilation complete!", "success");
+      if (data.logs) {
+        addLog(data.logs, "info");
+      }
+      
+      onCompileSuccess(data.abi, data.wasm);
+      addLog(`Contract Spec loaded successfully. ${data.abi.length} functions exported.`, "success");
+      
+    } catch (err: any) {
+      console.error(err);
+      addLog(`Failed to communicate with compiler backend: ${err.message}`, "error");
+    } finally {
+      setCompiling(false);
+    }
+  };
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
