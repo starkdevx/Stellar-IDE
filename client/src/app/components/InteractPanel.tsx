@@ -85,7 +85,106 @@ export default function InteractPanel({
     return StellarSdk.nativeToScVal(value);
   };
 
- 
+  const handleInvoke = async (funcName: string, inputs: any[]) => {
+    if (!contractId) return;
+    
+    setInvoking((prev) => ({ ...prev, [funcName]: true }));
+    setOutputs((prev) => ({ ...prev, [funcName]: "" }));
+    addLog(`Invoking contract method "${funcName}"...`, "info");
+
+    try {
+      const userAddressResult = await getAddress();
+      const userAddress = typeof userAddressResult === "string" ? userAddressResult : (userAddressResult?.address || "");
+      if (!userAddress) {
+        throw new Error("Freighter wallet is not connected.");
+      }
+
+      const rpcServer = new StellarSdk.rpc.Server(rpcUrl);
+      const horizonServer = new StellarSdk.Horizon.Server(horizonUrl);
+
+      // Map dynamic inputs to ScVal
+      const parsedArgs = inputs.map((input) => {
+        const rawVal = inputValues[`${funcName}-${input.name}`];
+        if (rawVal === undefined || rawVal === "") {
+          throw new Error(`Input field "${input.name}" is required.`);
+        }
+        return parseInputToScVal(rawVal, input.type_);
+      });
+
+      // Load current account sequence from Horizon
+      const sourceAccount = await horizonServer.loadAccount(userAddress);
+
+      // Build Transaction
+      let tx = new StellarSdk.TransactionBuilder(sourceAccount, {
+        fee: "100",
+        networkPassphrase: StellarSdk.Networks.TESTNET,
+      })
+      .addOperation(StellarSdk.Operation.invokeContractFunction({
+        contract: contractId,
+        function: funcName,
+        args: parsedArgs,
+      }))
+      .setTimeout(60)
+      .build();
+
+      // Simulate and prepare resource limits
+      tx = await rpcServer.prepareTransaction(tx);
+
+      addLog(`Requesting Freighter wallet signature to call "${funcName}"...`, "info");
+      const { signTransaction } = await import("@stellar/freighter-api");
+      const signed = await signTransaction(tx.toXDR(), {
+        networkPassphrase: StellarSdk.Networks.TESTNET,
+      });
+
+      if (!signed || !signed.signedTxXdr) {
+        throw new Error("Transaction signature rejected by Freighter");
+      }
+
+      const signedTx = StellarSdk.TransactionBuilder.fromXDR(
+        signed.signedTxXdr,
+        StellarSdk.Networks.TESTNET
+      );
+
+      addLog(`Submitting transaction to Stellar ledger...`, "info");
+      const sendResponse = await rpcServer.sendTransaction(signedTx);
+
+      if (sendResponse.status === "ERROR") {
+        throw new Error(`Transaction submission error: ${JSON.stringify((sendResponse as any).errorResult || sendResponse)}`);
+      }
+
+      // Poll transaction
+      let txResponse = await rpcServer.getTransaction(sendResponse.hash);
+      while ((txResponse.status as any) === "PENDING" || txResponse.status === "NOT_FOUND") {
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+        txResponse = await rpcServer.getTransaction(sendResponse.hash);
+      }
+
+      if (txResponse.status === "FAILED") {
+        throw new Error(`Transaction execution failed: ${JSON.stringify((txResponse as any).resultXdr)}`);
+      }
+
+      // Parse Return Value
+      const successResp = txResponse as any;
+      const resultXDR = StellarSdk.xdr.TransactionResult.fromXDR(
+        successResp.resultXdr,
+        "base64"
+      );
+      const successVal = resultXDR.result().results()[0].tr().invokeHostFunctionResult().success();
+      const parsedVal = StellarSdk.xdr.ScVal.fromXDR(successVal);
+      const nativeValue = StellarSdk.scValToNative(parsedVal);
+      const outputString = typeof nativeValue === "object" ? JSON.stringify(nativeValue, null, 2) : String(nativeValue);
+
+      addLog(`Method "${funcName}" returned: ${outputString}`, "success");
+      setOutputs((prev) => ({ ...prev, [funcName]: outputString }));
+
+    } catch (err: any) {
+      console.error(err);
+      addLog(`Invocation failed: ${err.message}`, "error");
+      setOutputs((prev) => ({ ...prev, [funcName]: `Error: ${err.message}` }));
+    } finally {
+      setInvoking((prev) => ({ ...prev, [funcName]: false }));
+    }
+  };
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
