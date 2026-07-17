@@ -165,10 +165,7 @@ export default function InteractPanel({
 
       // Parse Return Value
       const successResp = txResponse as any;
-      const resultXDR = StellarSdk.xdr.TransactionResult.fromXDR(
-        successResp.resultXdr,
-        "base64"
-      );
+      const resultXDR = successResp.resultXdr;
       const successVal = resultXDR.result().results()[0].tr().invokeHostFunctionResult().success();
       const parsedVal = StellarSdk.xdr.ScVal.fromXDR(successVal);
       const nativeValue = StellarSdk.scValToNative(parsedVal);

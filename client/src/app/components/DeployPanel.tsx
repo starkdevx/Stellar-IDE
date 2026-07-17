@@ -194,10 +194,7 @@ export default function DeployPanel({
 
       // Extract WASM Hash
       const successResponse = uploadTxResponse as any;
-      const uploadResultXDR = StellarSdk.xdr.TransactionResult.fromXDR(
-        successResponse.resultXdr,
-        "base64"
-      );
+      const uploadResultXDR = successResponse.resultXdr;
       const wasmHashVal = uploadResultXDR.result().results()[0].tr().invokeHostFunctionResult().success();
       const parsedWasmHashVal = StellarSdk.xdr.ScVal.fromXDR(wasmHashVal);
       const wasmHash = StellarSdk.scValToNative(parsedWasmHashVal);
@@ -261,10 +258,7 @@ export default function DeployPanel({
       }
 
       const createSuccessResp = createTxResponse as any;
-      const createResultXDR = StellarSdk.xdr.TransactionResult.fromXDR(
-        createSuccessResp.resultXdr,
-        "base64"
-      );
+      const createResultXDR = createSuccessResp.resultXdr;
       const contractAddressVal = createResultXDR.result().results()[0].tr().invokeHostFunctionResult().success();
       const parsedContractVal = StellarSdk.xdr.ScVal.fromXDR(contractAddressVal);
       const contractId = StellarSdk.scValToNative(parsedContractVal).toString();
