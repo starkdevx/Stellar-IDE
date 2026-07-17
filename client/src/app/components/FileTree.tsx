@@ -40,7 +40,7 @@ export default function FileTree({
 
   // Group files by directory
   const renderFileTree = () => {
-    const filePaths = Object.keys(files).sort();
+    const filePaths = Object.keys(files).filter((path) => path !== "Cargo.toml").sort();
     
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>

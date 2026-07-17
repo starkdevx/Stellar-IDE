@@ -10,22 +10,6 @@ import InteractPanel from "./components/InteractPanel";
 
 // Default template files
 const DEFAULT_FILES = {
-  "Cargo.toml": `[package]
-name = "hello-world"
-version = "0.0.0"
-edition = "2021"
-publish = false
-
-[lib]
-crate-type = ["lib", "cdylib"]
-doctest = false
-
-[dependencies]
-soroban-sdk = { workspace = true }
-
-[dev-dependencies]
-soroban-sdk = { workspace = true, features = ["testutils"] }
-`,
   "src/lib.rs": `#![no_std]
 use soroban_sdk::{contract, contractimpl, vec, Env, String, Vec};
 
@@ -87,7 +71,9 @@ export default function Home() {
     const savedFiles = localStorage.getItem("stellar_ide_files");
     if (savedFiles) {
       try {
-        setFiles(JSON.parse(savedFiles));
+        const parsed = JSON.parse(savedFiles);
+        delete parsed["Cargo.toml"];
+        setFiles(parsed);
       } catch {
         setFiles(DEFAULT_FILES);
       }
