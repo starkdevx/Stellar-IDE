@@ -193,10 +193,10 @@ export default function DeployPanel({
       }
 
       // Extract WASM Hash
-      const successResponse = uploadTxResponse as any;
-      const uploadResultXDR = successResponse.resultXdr;
-      const wasmHashVal = uploadResultXDR.result().results()[0].tr().invokeHostFunctionResult().success();
-      const wasmHash = StellarSdk.scValToNative(wasmHashVal as any);
+      if (!uploadTxResponse.returnValue) {
+        throw new Error("WASM upload transaction did not return a value.");
+      }
+      const wasmHash = StellarSdk.scValToNative(uploadTxResponse.returnValue as any);
       const wasmHashHex = Buffer.from(wasmHash).toString("hex");
       
       addLog(`WASM successfully uploaded. WASM Hash: ${wasmHashHex}`, "success");
@@ -256,10 +256,10 @@ export default function DeployPanel({
         throw new Error(`Contract creation failed: ${JSON.stringify((createTxResponse as any).resultXdr)}`);
       }
 
-      const createSuccessResp = createTxResponse as any;
-      const createResultXDR = createSuccessResp.resultXdr;
-      const contractAddressVal = createResultXDR.result().results()[0].tr().invokeHostFunctionResult().success();
-      const contractId = StellarSdk.scValToNative(contractAddressVal as any).toString();
+      if (!createTxResponse.returnValue) {
+        throw new Error("Contract creation transaction did not return a value.");
+      }
+      const contractId = StellarSdk.scValToNative(createTxResponse.returnValue as any).toString();
 
       addLog(`Contract successfully instantiated! ID: ${contractId}`, "success");
       onDeploySuccess(contractId);

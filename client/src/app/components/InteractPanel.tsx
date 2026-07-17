@@ -164,10 +164,9 @@ export default function InteractPanel({
       }
 
       // Parse Return Value
-      const successResp = txResponse as any;
-      const resultXDR = successResp.resultXdr;
-      const successVal = resultXDR.result().results()[0].tr().invokeHostFunctionResult().success();
-      const nativeValue = StellarSdk.scValToNative(successVal as any);
+      const nativeValue = txResponse.returnValue 
+        ? StellarSdk.scValToNative(txResponse.returnValue as any) 
+        : null;
       const outputString = typeof nativeValue === "object" ? JSON.stringify(nativeValue, null, 2) : String(nativeValue);
 
       addLog(`Method "${funcName}" returned: ${outputString}`, "success");

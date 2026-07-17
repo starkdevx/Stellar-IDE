@@ -242,7 +242,7 @@ export default function Home() {
       <header className="ide-header">
         <div className="brand">
           <Cpu size={20} style={{ color: "hsl(var(--accent-violet))" }} />
-          <span>Soroban Studio</span>
+          <span>Soroban Playground</span>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
           <span style={{ fontSize: "0.75rem", color: "hsl(var(--text-muted))" }}>Stellar Smart Contracts Sandbox</span>
