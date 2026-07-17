@@ -161,6 +161,24 @@ export default function Home() {
     addLog(`Deleted file: ${path}`, "warning");
   };
 
+  const handleRenameFile = (oldPath: string, newPath: string) => {
+    if (oldPath === "src/lib.rs" || oldPath === "Cargo.toml") return;
+    if (!newPath.trim()) return;
+    if (files[newPath] !== undefined) {
+      alert("A file with this name already exists!");
+      return;
+    }
+    const updated = { ...files };
+    const content = updated[oldPath];
+    delete updated[oldPath];
+    updated[newPath] = content;
+    saveFiles(updated);
+    if (activeFile === oldPath) {
+      setActiveFile(newPath);
+    }
+    addLog(`Renamed file: ${oldPath} -> ${newPath}`, "info");
+  };
+
   const handleResetFiles = () => {
     saveFiles(DEFAULT_FILES);
     setActiveFile("src/lib.rs");
@@ -272,6 +290,7 @@ export default function Home() {
                 onSelectFile={handleSelectFile}
                 onCreateFile={handleCreateFile}
                 onDeleteFile={handleDeleteFile}
+                onRenameFile={handleRenameFile}
                 onResetFiles={handleResetFiles}
               />
             )}

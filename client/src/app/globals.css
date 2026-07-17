@@ -285,7 +285,7 @@ html, body {
 
 .btn-primary {
   background: linear-gradient(135deg, hsl(var(--accent-indigo)), hsl(var(--accent-violet)));
-  color: #white;
+  color: white;
   border: none;
 }
 .btn-primary:hover {
@@ -496,4 +496,64 @@ html, body {
 @keyframes spin {
   0% { transform: rotate(0deg); }
   100% { transform: rotate(360deg); }
+}
+
+/* Custom Right-Click Context Menu */
+.custom-context-menu {
+  background: rgba(12, 10, 28, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5), 0 0 15px rgba(139, 92, 246, 0.1);
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 130px;
+}
+
+.context-menu-item {
+  background: transparent;
+  border: none;
+  color: hsl(var(--text-secondary));
+  padding: 8px 12px;
+  font-size: 0.8rem;
+  font-weight: 500;
+  text-align: left;
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: all 0.15s ease;
+  width: 100%;
+}
+
+.context-menu-item:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.06);
+  color: hsl(var(--text-primary));
+}
+
+.context-menu-item.delete:hover:not(:disabled) {
+  background: rgba(239, 68, 68, 0.15);
+  color: hsl(var(--accent-error));
+}
+
+.context-menu-item:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+/* Inline Edit File Input */
+.inline-edit-input {
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid hsl(var(--accent-indigo));
+  border-radius: 4px;
+  color: hsl(var(--text-primary));
+  font-family: inherit;
+  font-size: 0.8rem;
+  padding: 2px 6px;
+  width: 100%;
+  outline: none;
 }

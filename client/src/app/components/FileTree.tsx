@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useState } from "react";
-import { Folder, File, Trash2, Plus, RefreshCw } from "lucide-react";
+import React, { useState, useEffect, useRef } from "react";
+import { Folder, File, Trash2, Plus, RefreshCw, Edit2 } from "lucide-react";
 
 interface FileTreeProps {
   files: { [path: string]: string };
@@ -9,7 +9,15 @@ interface FileTreeProps {
   onSelectFile: (path: string) => void;
   onCreateFile: (path: string) => void;
   onDeleteFile: (path: string) => void;
+  onRenameFile: (oldPath: string, newPath: string) => void;
   onResetFiles: () => void;
+}
+
+interface ContextMenu {
+  x: number;
+  y: number;
+  visible: boolean;
+  path: string;
 }
 
 export default function FileTree({
@@ -18,10 +26,36 @@ export default function FileTree({
   onSelectFile,
   onCreateFile,
   onDeleteFile,
+  onRenameFile,
   onResetFiles,
 }: FileTreeProps) {
   const [newFileName, setNewFileName] = useState("");
   const [isCreating, setIsCreating] = useState(false);
+
+  // Context Menu and Rename States
+  const [contextMenu, setContextMenu] = useState<ContextMenu>({ x: 0, y: 0, visible: false, path: "" });
+  const [editingPath, setEditingPath] = useState<string | null>(null);
+  const [editValue, setEditValue] = useState<string>("");
+  const renameInputRef = useRef<HTMLInputElement>(null);
+
+  // Close context menu on any window click
+  useEffect(() => {
+    const handleWindowClick = () => {
+      setContextMenu((prev) => ({ ...prev, visible: false }));
+    };
+    window.addEventListener("click", handleWindowClick);
+    return () => window.removeEventListener("click", handleWindowClick);
+  }, []);
+
+  // Autofocus rename input and select input text
+  useEffect(() => {
+    if (editingPath && renameInputRef.current) {
+      renameInputRef.current.focus();
+      const input = renameInputRef.current;
+      const startSelect = editingPath.startsWith("src/") ? 4 : 0;
+      input.setSelectionRange(startSelect, input.value.length);
+    }
+  }, [editingPath]);
 
   const handleSubmitCreate = (e: React.FormEvent) => {
     e.preventDefault();
@@ -38,6 +72,59 @@ export default function FileTree({
     setIsCreating(false);
   };
 
+  const handleContextMenu = (e: React.MouseEvent, path: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setContextMenu({
+      x: e.clientX,
+      y: e.clientY,
+      visible: true,
+      path,
+    });
+  };
+
+  const handleStartRename = (path: string) => {
+    if (path === "src/lib.rs" || path === "Cargo.toml") return;
+    setEditingPath(path);
+    setEditValue(path);
+    setContextMenu((prev) => ({ ...prev, visible: false }));
+  };
+
+  const handleTriggerDelete = (path: string) => {
+    if (path === "src/lib.rs" || path === "Cargo.toml") return;
+    setContextMenu((prev) => ({ ...prev, visible: false }));
+    if (confirm(`Delete ${path}?`)) {
+      onDeleteFile(path);
+    }
+  };
+
+  const handleRenameSubmit = () => {
+    if (!editingPath) return;
+    const oldPath = editingPath;
+    const rawVal = editValue.trim();
+    
+    if (!rawVal || rawVal === oldPath) {
+      setEditingPath(null);
+      return;
+    }
+    
+    let newPath = rawVal;
+    if (oldPath.startsWith("src/") && !newPath.startsWith("src/")) {
+      newPath = `src/${newPath}`;
+    }
+    
+    onRenameFile(oldPath, newPath);
+    setEditingPath(null);
+  };
+
+  const handleRenameKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter") {
+      handleRenameSubmit();
+    } else if (e.key === "Escape") {
+      setEditingPath(null);
+    }
+  };
+
   // Group files by directory
   const renderFileTree = () => {
     const filePaths = Object.keys(files).filter((path) => path !== "Cargo.toml").sort();
@@ -46,33 +133,49 @@ export default function FileTree({
       <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
         {filePaths.map((path) => {
           const isActive = path === activeFile;
-          const isCargo = path === "Cargo.toml";
+          const isEditing = path === editingPath;
           
           return (
             <div
               key={path}
               className={`file-item ${isActive ? "active" : ""}`}
-              onClick={() => onSelectFile(path)}
+              onClick={() => !isEditing && onSelectFile(path)}
+              onContextMenu={(e) => handleContextMenu(e, path)}
             >
-              <div style={{ display: "flex", alignSelf: "center", alignItems: "center", gap: "8px" }}>
-                {isCargo ? (
-                  <File size={16} className="text-secondary" style={{ color: "hsl(var(--accent-cyan))" }} />
+              <div style={{ display: "flex", alignSelf: "center", alignItems: "center", gap: "8px", width: "100%", overflow: "hidden" }}>
+                <File size={16} style={{ color: "hsl(var(--text-secondary))", flexShrink: 0 }} />
+                {isEditing ? (
+                  <input
+                    ref={renameInputRef}
+                    type="text"
+                    className="inline-edit-input"
+                    value={editValue}
+                    onChange={(e) => setEditValue(e.target.value)}
+                    onBlur={handleRenameSubmit}
+                    onKeyDown={handleRenameKeyDown}
+                    onClick={(e) => e.stopPropagation()}
+                  />
                 ) : (
-                  <File size={16} style={{ color: "hsl(var(--text-secondary))" }} />
+                  <span style={{ fontSize: "0.8rem", textOverflow: "ellipsis", overflow: "hidden", whiteSpace: "nowrap" }}>
+                    {path}
+                  </span>
                 )}
-                <span style={{ fontSize: "0.8rem" }}>{path}</span>
               </div>
               
-              {/* Do not allow deleting core files to avoid breaking the build */}
-              {path !== "src/lib.rs" && path !== "Cargo.toml" && (
+              {/* Actions on Hover */}
+              {path !== "src/lib.rs" && !isEditing && (
                 <div className="file-actions" onClick={(e) => e.stopPropagation()}>
                   <button
                     className="file-btn"
-                    onClick={() => {
-                      if (confirm(`Delete ${path}?`)) {
-                        onDeleteFile(path);
-                      }
-                    }}
+                    onClick={() => handleStartRename(path)}
+                    title="Rename File"
+                    style={{ marginRight: "4px" }}
+                  >
+                    <Edit2 size={12} />
+                  </button>
+                  <button
+                    className="file-btn"
+                    onClick={() => handleTriggerDelete(path)}
                     title="Delete File"
                   >
                     <Trash2 size={13} />
@@ -149,6 +252,37 @@ export default function FileTree({
           {renderFileTree()}
         </div>
       </div>
+
+      {/* Custom Context Menu */}
+      {contextMenu.visible && (
+        <div
+          className="custom-context-menu"
+          style={{
+            position: "fixed",
+            top: contextMenu.y,
+            left: contextMenu.x,
+            zIndex: 1000,
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <button
+            className="context-menu-item"
+            onClick={() => handleStartRename(contextMenu.path)}
+            disabled={contextMenu.path === "src/lib.rs"}
+          >
+            <Edit2 size={13} />
+            <span>Rename</span>
+          </button>
+          <button
+            className="context-menu-item delete"
+            onClick={() => handleTriggerDelete(contextMenu.path)}
+            disabled={contextMenu.path === "src/lib.rs"}
+          >
+            <Trash2 size={13} />
+            <span>Delete</span>
+          </button>
+        </div>
+      )}
     </div>
   );
 }
