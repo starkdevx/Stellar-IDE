@@ -7,7 +7,7 @@ pub struct Contract;
 #[contractimpl]
 impl Contract {
     pub fn hello(env: Env, to: String) -> Vec<String> {
-        vec![&env, String::from_str(&env, "Helloo"), to]
+        vec![&env, String::from_str(&env, "Hello"), to]
     }
 }
 

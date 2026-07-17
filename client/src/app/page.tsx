@@ -59,6 +59,7 @@ interface LogLine {
 export default function Home() {
   const [mounted, setMounted] = useState(false);
   const [files, setFiles] = useState<{ [path: string]: string }>({});
+  const [folders, setFolders] = useState<string[]>([]);
   const [activeFile, setActiveFile] = useState<string>("src/lib.rs");
   const [sidebarTab, setSidebarTab] = useState<"explorer" | "compiler" | "interact">("explorer");
   const [logs, setLogs] = useState<LogLine[]>([]);
@@ -79,6 +80,17 @@ export default function Home() {
       }
     } else {
       setFiles(DEFAULT_FILES);
+    }
+
+    const savedFolders = localStorage.getItem("stellar_ide_folders");
+    if (savedFolders) {
+      try {
+        setFolders(JSON.parse(savedFolders));
+      } catch {
+        setFolders(["src"]);
+      }
+    } else {
+      setFolders(["src"]);
     }
 
     const savedContractId = localStorage.getItem("stellar_ide_contract_id");
@@ -118,6 +130,11 @@ export default function Home() {
     localStorage.setItem("stellar_ide_files", JSON.stringify(updatedFiles));
   };
 
+  const saveFolders = (updatedFolders: string[]) => {
+    setFolders(updatedFolders);
+    localStorage.setItem("stellar_ide_folders", JSON.stringify(updatedFolders));
+  };
+
   const addLog = (text: string, type: "info" | "error" | "success" | "warning" = "info") => {
     const now = new Date().toLocaleTimeString();
     setLogs((prev) => [
@@ -146,6 +163,30 @@ export default function Home() {
     }
     const updated = { ...files, [path]: "" };
     saveFiles(updated);
+
+    // Auto-detect and add parent directories to folders state
+    const parts = path.split("/");
+    if (parts.length > 1) {
+      const parentDirs: string[] = [];
+      let currentPath = "";
+      for (let i = 0; i < parts.length - 1; i++) {
+        currentPath = currentPath ? `${currentPath}/${parts[i]}` : parts[i];
+        parentDirs.push(currentPath);
+      }
+
+      let foldersUpdated = false;
+      const newFolders = [...folders];
+      parentDirs.forEach((dir) => {
+        if (!newFolders.includes(dir)) {
+          newFolders.push(dir);
+          foldersUpdated = true;
+        }
+      });
+      if (foldersUpdated) {
+        saveFolders(newFolders);
+      }
+    }
+
     setActiveFile(path);
     addLog(`Created file: ${path}`, "info");
   };
@@ -179,8 +220,98 @@ export default function Home() {
     addLog(`Renamed file: ${oldPath} -> ${newPath}`, "info");
   };
 
+  const handleCreateFolder = (path: string) => {
+    if (!path.trim()) return;
+    let finalPath = path.trim();
+    if (!finalPath.startsWith("src/") && finalPath !== "src" && !finalPath.includes("/")) {
+      finalPath = `src/${finalPath}`;
+    }
+    if (folders.includes(finalPath)) {
+      alert("Folder already exists!");
+      return;
+    }
+    const updated = [...folders, finalPath];
+    saveFolders(updated);
+    addLog(`Created folder: ${finalPath}`, "info");
+  };
+
+  const handleRenameFolder = (oldPath: string, newPath: string) => {
+    if (oldPath === "src") return;
+    if (!newPath.trim()) return;
+    let finalNewPath = newPath.trim();
+    if (oldPath.startsWith("src/") && !finalNewPath.startsWith("src/")) {
+      finalNewPath = `src/${finalNewPath}`;
+    }
+    if (folders.includes(finalNewPath)) {
+      alert("A folder with this name already exists!");
+      return;
+    }
+
+    // 1. Rename parent folders and all subfolders
+    const updatedFolders = folders.map((f) => {
+      if (f === oldPath) return finalNewPath;
+      if (f.startsWith(`${oldPath}/`)) {
+        return f.replace(oldPath, finalNewPath);
+      }
+      return f;
+    });
+    saveFolders(updatedFolders);
+
+    // 2. Rename all child files
+    const updatedFiles = { ...files };
+    let activeFileUpdated = false;
+    let nextActiveFile = activeFile;
+
+    for (const filePath of Object.keys(updatedFiles)) {
+      if (filePath.startsWith(`${oldPath}/`)) {
+        const newFilePath = filePath.replace(oldPath, finalNewPath);
+        updatedFiles[newFilePath] = updatedFiles[filePath];
+        delete updatedFiles[filePath];
+
+        if (activeFile === filePath) {
+          nextActiveFile = newFilePath;
+          activeFileUpdated = true;
+        }
+      }
+    }
+    saveFiles(updatedFiles);
+
+    if (activeFileUpdated) {
+      setActiveFile(nextActiveFile);
+    }
+    addLog(`Renamed folder: ${oldPath} -> ${finalNewPath}`, "info");
+  };
+
+  const handleDeleteFolder = (path: string) => {
+    if (path === "src") return;
+    
+    // 1. Delete matching folders and subfolders
+    const updatedFolders = folders.filter((f) => f !== path && !f.startsWith(`${path}/`));
+    saveFolders(updatedFolders);
+
+    // 2. Delete child files
+    const updatedFiles = { ...files };
+    let activeFileUpdated = false;
+
+    for (const filePath of Object.keys(updatedFiles)) {
+      if (filePath.startsWith(`${path}/`)) {
+        delete updatedFiles[filePath];
+        if (activeFile === filePath) {
+          activeFileUpdated = true;
+        }
+      }
+    }
+    saveFiles(updatedFiles);
+
+    if (activeFileUpdated) {
+      setActiveFile("src/lib.rs");
+    }
+    addLog(`Deleted folder: ${path}`, "warning");
+  };
+
   const handleResetFiles = () => {
     saveFiles(DEFAULT_FILES);
+    saveFolders(["src"]);
     setActiveFile("src/lib.rs");
     setAbi(null);
     setWasmBase64(null);
@@ -188,6 +319,7 @@ export default function Home() {
     localStorage.removeItem("stellar_ide_abi");
     localStorage.removeItem("stellar_ide_wasm");
     localStorage.removeItem("stellar_ide_contract_id");
+    localStorage.removeItem("stellar_ide_folders");
     addLog("Workspace files reset to default template.", "info");
   };
 
@@ -286,11 +418,15 @@ export default function Home() {
             {sidebarTab === "explorer" && (
               <FileTree
                 files={files}
+                folders={folders}
                 activeFile={activeFile}
                 onSelectFile={handleSelectFile}
                 onCreateFile={handleCreateFile}
                 onDeleteFile={handleDeleteFile}
                 onRenameFile={handleRenameFile}
+                onCreateFolder={handleCreateFolder}
+                onRenameFolder={handleRenameFolder}
+                onDeleteFolder={handleDeleteFolder}
                 onResetFiles={handleResetFiles}
               />
             )}
