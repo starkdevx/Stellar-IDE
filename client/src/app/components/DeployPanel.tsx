@@ -196,8 +196,7 @@ export default function DeployPanel({
       const successResponse = uploadTxResponse as any;
       const uploadResultXDR = successResponse.resultXdr;
       const wasmHashVal = uploadResultXDR.result().results()[0].tr().invokeHostFunctionResult().success();
-      const parsedWasmHashVal = StellarSdk.xdr.ScVal.fromXDR(wasmHashVal);
-      const wasmHash = StellarSdk.scValToNative(parsedWasmHashVal);
+      const wasmHash = StellarSdk.scValToNative(wasmHashVal as any);
       const wasmHashHex = Buffer.from(wasmHash).toString("hex");
       
       addLog(`WASM successfully uploaded. WASM Hash: ${wasmHashHex}`, "success");
@@ -260,8 +259,7 @@ export default function DeployPanel({
       const createSuccessResp = createTxResponse as any;
       const createResultXDR = createSuccessResp.resultXdr;
       const contractAddressVal = createResultXDR.result().results()[0].tr().invokeHostFunctionResult().success();
-      const parsedContractVal = StellarSdk.xdr.ScVal.fromXDR(contractAddressVal);
-      const contractId = StellarSdk.scValToNative(parsedContractVal).toString();
+      const contractId = StellarSdk.scValToNative(contractAddressVal as any).toString();
 
       addLog(`Contract successfully instantiated! ID: ${contractId}`, "success");
       onDeploySuccess(contractId);
