@@ -90,12 +90,13 @@ export default function FileTree({
   onDeleteFolder,
   onResetFiles,
 }: FileTreeProps) {
-  // Menu, rename and folding states
+  // Menu, rename, selected and folding states
   const [contextMenu, setContextMenu] = useState<ContextMenu>({ x: 0, y: 0, visible: false, path: "", isFolder: false });
   const [editingPath, setEditingPath] = useState<string | null>(null);
   const [editValue, setEditValue] = useState<string>("");
   const [isEditingFolder, setIsEditingFolder] = useState(false);
   const [collapsedFolders, setCollapsedFolders] = useState<{ [path: string]: boolean }>({});
+  const [selectedPath, setSelectedPath] = useState<string>("src");
 
   // Inline Creation States (under specific folders)
   const [creatingUnderPath, setCreatingUnderPath] = useState<string | null>(null);
@@ -124,6 +125,13 @@ export default function FileTree({
     }
   }, [editingPath]);
 
+  // Sync selectedPath with activeFile changes
+  useEffect(() => {
+    if (activeFile) {
+      setSelectedPath(activeFile);
+    }
+  }, [activeFile]);
+
   // Autofocus creation input
   useEffect(() => {
     if (creatingUnderPath !== null && createInputRef.current) {
@@ -131,20 +139,34 @@ export default function FileTree({
     }
   }, [creatingUnderPath]);
 
+  // Helper to expand all ancestor folders recursively
+  const expandAncestors = (path: string) => {
+    const parts = path.split("/");
+    const updates: { [p: string]: boolean } = {};
+    let current = "";
+    for (let i = 0; i < parts.length; i++) {
+      current = current ? `${current}/${parts[i]}` : parts[i];
+      updates[current] = false; // false means expanded
+    }
+    setCollapsedFolders((prev) => ({ ...prev, ...updates }));
+  };
+
   const handleStartCreate = (parentPath: string, type: "file" | "folder") => {
-    // Expand parent folder so the user can see the inline creation node
-    setCollapsedFolders((prev) => ({ ...prev, [parentPath]: false }));
+    expandAncestors(parentPath);
     setCreatingUnderPath(parentPath);
     setCreatingType(type);
     setCreatingValue("");
   };
 
   const handleGlobalCreate = (type: "file" | "folder") => {
-    // Find parent directory of activeFile
     let parentDir = "src";
-    if (activeFile && activeFile.includes("/")) {
-      const idx = activeFile.lastIndexOf("/");
-      parentDir = activeFile.slice(0, idx);
+    if (selectedPath) {
+      if (folders.includes(selectedPath) || selectedPath === "src") {
+        parentDir = selectedPath;
+      } else if (selectedPath.includes("/")) {
+        const idx = selectedPath.lastIndexOf("/");
+        parentDir = selectedPath.slice(0, idx);
+      }
     }
     handleStartCreate(parentDir, type);
   };
@@ -257,7 +279,7 @@ export default function FileTree({
       );
     }
 
-    const isActive = !node.isFolder && node.path === activeFile;
+    const isActive = node.path === selectedPath || (!node.isFolder && node.path === activeFile);
     const isEditing = node.path === editingPath;
     const isCollapsed = node.isFolder && collapsedFolders[node.path];
     const isPlaceholder = node.name === "";
@@ -293,6 +315,7 @@ export default function FileTree({
 
     const handleNodeClick = (e: React.MouseEvent) => {
       e.stopPropagation();
+      setSelectedPath(node.path);
       if (node.isFolder) {
         setCollapsedFolders((prev) => ({ ...prev, [node.path]: !prev[node.path] }));
       } else {
@@ -301,6 +324,7 @@ export default function FileTree({
     };
 
     const handleNodeContextMenu = (e: React.MouseEvent) => {
+      setSelectedPath(node.path);
       handleContextMenu(e, node.path, node.isFolder);
     };
 
