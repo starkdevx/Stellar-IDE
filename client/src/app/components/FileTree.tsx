@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
-import { Folder, FolderPlus, File, Trash2, Plus, RefreshCw, Edit2, ChevronDown, ChevronRight } from "lucide-react";
+import { Folder, FolderPlus, File, Trash2, Plus, RefreshCw, Edit2, ChevronDown, ChevronRight, FilePlus } from "lucide-react";
 
 interface FileTreeProps {
   files: { [path: string]: string };
@@ -90,17 +90,20 @@ export default function FileTree({
   onDeleteFolder,
   onResetFiles,
 }: FileTreeProps) {
-  const [isCreating, setIsCreating] = useState<"file" | "folder" | null>(null);
-  const [newFileName, setNewFileName] = useState("");
-
   // Menu, rename and folding states
   const [contextMenu, setContextMenu] = useState<ContextMenu>({ x: 0, y: 0, visible: false, path: "", isFolder: false });
   const [editingPath, setEditingPath] = useState<string | null>(null);
   const [editValue, setEditValue] = useState<string>("");
   const [isEditingFolder, setIsEditingFolder] = useState(false);
   const [collapsedFolders, setCollapsedFolders] = useState<{ [path: string]: boolean }>({});
-  
+
+  // Inline Creation States (under specific folders)
+  const [creatingUnderPath, setCreatingUnderPath] = useState<string | null>(null);
+  const [creatingType, setCreatingType] = useState<"file" | "folder" | null>(null);
+  const [creatingValue, setCreatingValue] = useState<string>("");
+
   const renameInputRef = useRef<HTMLInputElement>(null);
+  const createInputRef = useRef<HTMLInputElement>(null);
 
   // Close context menu on any window click
   useEffect(() => {
@@ -121,19 +124,62 @@ export default function FileTree({
     }
   }, [editingPath]);
 
-  const handleSubmitCreate = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newFileName.trim()) return;
-    
-    const path = newFileName.trim();
-    if (isCreating === "file") {
-      onCreateFile(path);
-    } else if (isCreating === "folder") {
-      onCreateFolder(path);
+  // Autofocus creation input
+  useEffect(() => {
+    if (creatingUnderPath !== null && createInputRef.current) {
+      createInputRef.current.focus();
     }
-    
-    setNewFileName("");
-    setIsCreating(null);
+  }, [creatingUnderPath]);
+
+  const handleStartCreate = (parentPath: string, type: "file" | "folder") => {
+    // Expand parent folder so the user can see the inline creation node
+    setCollapsedFolders((prev) => ({ ...prev, [parentPath]: false }));
+    setCreatingUnderPath(parentPath);
+    setCreatingType(type);
+    setCreatingValue("");
+  };
+
+  const handleGlobalCreate = (type: "file" | "folder") => {
+    // Find parent directory of activeFile
+    let parentDir = "src";
+    if (activeFile && activeFile.includes("/")) {
+      const idx = activeFile.lastIndexOf("/");
+      parentDir = activeFile.slice(0, idx);
+    }
+    handleStartCreate(parentDir, type);
+  };
+
+  const handleCreateSubmit = () => {
+    if (creatingUnderPath === null || creatingType === null) return;
+    const name = creatingValue.trim();
+    if (!name) {
+      setCreatingUnderPath(null);
+      setCreatingType(null);
+      setCreatingValue("");
+      return;
+    }
+
+    const fullPath = `${creatingUnderPath}/${name}`;
+
+    if (creatingType === "file") {
+      onCreateFile(fullPath);
+    } else {
+      onCreateFolder(fullPath);
+    }
+
+    setCreatingUnderPath(null);
+    setCreatingType(null);
+    setCreatingValue("");
+  };
+
+  const handleCreateKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter") {
+      handleCreateSubmit();
+    } else if (e.key === "Escape") {
+      setCreatingUnderPath(null);
+      setCreatingType(null);
+      setCreatingValue("");
+    }
   };
 
   const handleStartRename = (path: string, isFolder: boolean) => {
@@ -189,9 +235,20 @@ export default function FileTree({
     }
   };
 
-  // Recursive directory tree renderer
+  const handleContextMenu = (e: React.MouseEvent, path: string, isFolder: boolean) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setContextMenu({
+      x: e.clientX,
+      y: e.clientY,
+      visible: true,
+      path,
+      isFolder,
+    });
+  };
+
+  // Recursive tree rendering
   const renderNode = (node: TreeNode, depth: number) => {
-    // Skip root node container render, just output children
     if (node.path === "") {
       return (
         <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
@@ -203,6 +260,36 @@ export default function FileTree({
     const isActive = !node.isFolder && node.path === activeFile;
     const isEditing = node.path === editingPath;
     const isCollapsed = node.isFolder && collapsedFolders[node.path];
+    const isPlaceholder = node.name === "";
+
+    if (isPlaceholder) {
+      return (
+        <div
+          key={node.path}
+          className="file-item"
+          style={{ paddingLeft: `${depth * 10}px` }}
+        >
+          <div style={{ display: "flex", alignSelf: "center", alignItems: "center", gap: "6px", width: "100%" }}>
+            {node.isFolder ? (
+              <Folder size={16} style={{ color: "hsl(var(--accent-violet))", flexShrink: 0 }} />
+            ) : (
+              <File size={16} style={{ color: "hsl(var(--text-secondary))", flexShrink: 0, marginLeft: "14px" }} />
+            )}
+            <input
+              ref={createInputRef}
+              type="text"
+              className="inline-edit-input"
+              placeholder={node.isFolder ? "folder name" : "file name.rs"}
+              value={creatingValue}
+              onChange={(e) => setCreatingValue(e.target.value)}
+              onBlur={handleCreateSubmit}
+              onKeyDown={handleCreateKeyDown}
+              onClick={(e) => e.stopPropagation()}
+            />
+          </div>
+        </div>
+      );
+    }
 
     const handleNodeClick = (e: React.MouseEvent) => {
       e.stopPropagation();
@@ -214,15 +301,7 @@ export default function FileTree({
     };
 
     const handleNodeContextMenu = (e: React.MouseEvent) => {
-      e.preventDefault();
-      e.stopPropagation();
-      setContextMenu({
-        x: e.clientX,
-        y: e.clientY,
-        visible: true,
-        path: node.path,
-        isFolder: node.isFolder,
-      });
+      handleContextMenu(e, node.path, node.isFolder);
     };
 
     return (
@@ -265,9 +344,29 @@ export default function FileTree({
             )}
           </div>
 
-          {/* Hover Actions (Delete / Rename) */}
+          {/* Hover Actions */}
           {node.path !== "src" && node.path !== "src/lib.rs" && !isEditing && (
             <div className="file-actions" onClick={(e) => e.stopPropagation()}>
+              {node.isFolder && (
+                <>
+                  <button
+                    className="file-btn"
+                    onClick={() => handleStartCreate(node.path, "file")}
+                    title="New File..."
+                    style={{ marginRight: "4px" }}
+                  >
+                    <Plus size={13} />
+                  </button>
+                  <button
+                    className="file-btn"
+                    onClick={() => handleStartCreate(node.path, "folder")}
+                    title="New Folder..."
+                    style={{ marginRight: "4px" }}
+                  >
+                    <FolderPlus size={13} />
+                  </button>
+                </>
+              )}
               <button
                 className="file-btn"
                 onClick={() => handleStartRename(node.path, node.isFolder)}
@@ -287,7 +386,7 @@ export default function FileTree({
           )}
         </div>
 
-        {/* Render folder children if expanded */}
+        {/* Render child tree nodes if not collapsed */}
         {node.isFolder && !isCollapsed && node.children.length > 0 && (
           <div style={{ display: "flex", flexDirection: "column" }}>
             {node.children.map((child) => renderNode(child, depth + 1))}
@@ -299,6 +398,28 @@ export default function FileTree({
 
   const treeRoot = buildTree(files, folders);
 
+  // Insert creation placeholder dynamically under parent path
+  if (creatingUnderPath !== null && creatingType !== null) {
+    const addPlaceholder = (node: TreeNode) => {
+      if (node.path === creatingUnderPath) {
+        node.children.push({
+          name: "", // trigger input rendering
+          path: `${creatingUnderPath}/_placeholder`,
+          isFolder: creatingType === "folder",
+          children: [],
+        });
+        return true;
+      }
+      for (const child of node.children) {
+        if (child.isFolder) {
+          if (addPlaceholder(child)) return true;
+        }
+      }
+      return false;
+    };
+    addPlaceholder(treeRoot);
+  }
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "12px", height: "100%" }}>
       <div className="panel-title">
@@ -306,17 +427,17 @@ export default function FileTree({
         <div style={{ display: "flex", gap: "8px" }}>
           <button
             className="file-btn"
-            onClick={() => setIsCreating(isCreating === "file" ? null : "file")}
-            title="New File"
-            style={{ color: isCreating === "file" ? "hsl(var(--accent-cyan))" : "hsl(var(--text-primary))" }}
+            onClick={() => handleGlobalCreate("file")}
+            title="New File (relative to selection)"
+            style={{ color: "hsl(var(--text-primary))" }}
           >
             <Plus size={16} />
           </button>
           <button
             className="file-btn"
-            onClick={() => setIsCreating(isCreating === "folder" ? null : "folder")}
-            title="New Folder"
-            style={{ color: isCreating === "folder" ? "hsl(var(--accent-cyan))" : "hsl(var(--text-primary))" }}
+            onClick={() => handleGlobalCreate("folder")}
+            title="New Folder (relative to selection)"
+            style={{ color: "hsl(var(--text-primary))" }}
           >
             <FolderPlus size={16} />
           </button>
@@ -334,32 +455,6 @@ export default function FileTree({
           </button>
         </div>
       </div>
-
-      {isCreating && (
-        <form onSubmit={handleSubmitCreate} className="input-group" style={{ margin: 0 }}>
-          <input
-            type="text"
-            className="form-control"
-            placeholder={isCreating === "file" ? "e.g. src/helper.rs" : "e.g. src/types"}
-            value={newFileName}
-            onChange={(e) => setNewFileName(e.target.value)}
-            autoFocus
-          />
-          <div style={{ display: "flex", gap: "6px", marginTop: "4px" }}>
-            <button type="submit" className="btn btn-primary" style={{ padding: "6px 12px", fontSize: "0.75rem", flex: 1 }}>
-              Add
-            </button>
-            <button
-              type="button"
-              className="btn btn-secondary"
-              style={{ padding: "6px 12px", fontSize: "0.75rem", flex: 1 }}
-              onClick={() => setIsCreating(null)}
-            >
-              Cancel
-            </button>
-          </div>
-        </form>
-      )}
 
       <div style={{ flex: 1, overflowY: "auto" }}>
         <div style={{ paddingLeft: "4px" }}>
@@ -379,6 +474,25 @@ export default function FileTree({
           }}
           onClick={(e) => e.stopPropagation()}
         >
+          {contextMenu.isFolder && (
+            <>
+              <button
+                className="context-menu-item"
+                onClick={() => handleStartCreate(contextMenu.path, "file")}
+              >
+                <FilePlus size={13} />
+                <span>New File</span>
+              </button>
+              <button
+                className="context-menu-item"
+                onClick={() => handleStartCreate(contextMenu.path, "folder")}
+              >
+                <FolderPlus size={13} />
+                <span>New Folder</span>
+              </button>
+              <div style={{ height: "1px", background: "rgba(255, 255, 255, 0.06)", margin: "4px 0" }}></div>
+            </>
+          )}
           <button
             className="context-menu-item"
             onClick={() => handleStartRename(contextMenu.path, contextMenu.isFolder)}
