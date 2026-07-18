@@ -60,6 +60,7 @@ export default function Home() {
   const [mounted, setMounted] = useState(false);
   const [files, setFiles] = useState<{ [path: string]: string }>({});
   const [folders, setFolders] = useState<string[]>([]);
+  const [openTabs, setOpenTabs] = useState<string[]>([]);
   const [activeFile, setActiveFile] = useState<string>("src/lib.rs");
   const [sidebarTab, setSidebarTab] = useState<"explorer" | "compiler" | "interact">("explorer");
   const [logs, setLogs] = useState<LogLine[]>([]);
@@ -91,6 +92,17 @@ export default function Home() {
       }
     } else {
       setFolders(["src"]);
+    }
+
+    const savedTabs = localStorage.getItem("stellar_ide_open_tabs");
+    if (savedTabs) {
+      try {
+        setOpenTabs(JSON.parse(savedTabs));
+      } catch {
+        setOpenTabs(["src/lib.rs"]);
+      }
+    } else {
+      setOpenTabs(["src/lib.rs"]);
     }
 
     const savedContractId = localStorage.getItem("stellar_ide_contract_id");
@@ -135,6 +147,11 @@ export default function Home() {
     localStorage.setItem("stellar_ide_folders", JSON.stringify(updatedFolders));
   };
 
+  const saveTabs = (updatedTabs: string[]) => {
+    setOpenTabs(updatedTabs);
+    localStorage.setItem("stellar_ide_open_tabs", JSON.stringify(updatedTabs));
+  };
+
   const addLog = (text: string, type: "info" | "error" | "success" | "warning" = "info") => {
     const now = new Date().toLocaleTimeString();
     setLogs((prev) => [
@@ -153,6 +170,9 @@ export default function Home() {
   };
 
   const handleSelectFile = (path: string) => {
+    if (!openTabs.includes(path)) {
+      saveTabs([...openTabs, path]);
+    }
     setActiveFile(path);
   };
 
@@ -187,6 +207,9 @@ export default function Home() {
       }
     }
 
+    if (!openTabs.includes(path)) {
+      saveTabs([...openTabs, path]);
+    }
     setActiveFile(path);
     addLog(`Created file: ${path}`, "info");
   };
@@ -196,8 +219,16 @@ export default function Home() {
     const updated = { ...files };
     delete updated[path];
     saveFiles(updated);
+
+    const remainingTabs = openTabs.filter((t) => t !== path);
+    saveTabs(remainingTabs);
+
     if (activeFile === path) {
-      setActiveFile("src/lib.rs");
+      if (remainingTabs.length > 0) {
+        setActiveFile(remainingTabs[remainingTabs.length - 1]);
+      } else {
+        setActiveFile("");
+      }
     }
     addLog(`Deleted file: ${path}`, "warning");
   };
@@ -214,6 +245,10 @@ export default function Home() {
     delete updated[oldPath];
     updated[newPath] = content;
     saveFiles(updated);
+
+    const updatedTabs = openTabs.map((t) => (t === oldPath ? newPath : t));
+    saveTabs(updatedTabs);
+
     if (activeFile === oldPath) {
       setActiveFile(newPath);
     }
@@ -276,6 +311,15 @@ export default function Home() {
     }
     saveFiles(updatedFiles);
 
+    // 3. Rename tabs
+    const updatedTabs = openTabs.map((t) => {
+      if (t.startsWith(`${oldPath}/`)) {
+        return t.replace(oldPath, finalNewPath);
+      }
+      return t;
+    });
+    saveTabs(updatedTabs);
+
     if (activeFileUpdated) {
       setActiveFile(nextActiveFile);
     }
@@ -303,15 +347,37 @@ export default function Home() {
     }
     saveFiles(updatedFiles);
 
+    // 3. Remove child tabs
+    const remainingTabs = openTabs.filter((t) => !t.startsWith(`${path}/`));
+    saveTabs(remainingTabs);
+
     if (activeFileUpdated) {
-      setActiveFile("src/lib.rs");
+      if (remainingTabs.length > 0) {
+        setActiveFile(remainingTabs[remainingTabs.length - 1]);
+      } else {
+        setActiveFile("");
+      }
     }
     addLog(`Deleted folder: ${path}`, "warning");
+  };
+
+  const handleCloseTab = (path: string) => {
+    const remainingTabs = openTabs.filter((t) => t !== path);
+    saveTabs(remainingTabs);
+
+    if (activeFile === path) {
+      if (remainingTabs.length > 0) {
+        setActiveFile(remainingTabs[remainingTabs.length - 1]);
+      } else {
+        setActiveFile("");
+      }
+    }
   };
 
   const handleResetFiles = () => {
     saveFiles(DEFAULT_FILES);
     saveFolders(["src"]);
+    saveTabs(["src/lib.rs"]);
     setActiveFile("src/lib.rs");
     setAbi(null);
     setWasmBase64(null);
@@ -320,6 +386,7 @@ export default function Home() {
     localStorage.removeItem("stellar_ide_wasm");
     localStorage.removeItem("stellar_ide_contract_id");
     localStorage.removeItem("stellar_ide_folders");
+    localStorage.removeItem("stellar_ide_open_tabs");
     addLog("Workspace files reset to default template.", "info");
   };
 
@@ -458,11 +525,52 @@ export default function Home() {
 
         {/* Right Side: Monaco Editor + Bottom Console Logs */}
         <div className="workspace-right">
-          <Editor
-            activeFile={activeFile}
-            content={files[activeFile] || ""}
-            onChange={handleContentChange}
-          />
+          <div className="editor-container">
+            {openTabs.length > 0 && (
+              <div className="editor-tabs-bar">
+                {openTabs.map((tabPath) => {
+                  const isActive = tabPath === activeFile;
+                  const fileName = tabPath.split("/").pop() || tabPath;
+                  return (
+                    <div
+                      key={tabPath}
+                      className={`editor-tab ${isActive ? "active" : ""}`}
+                      onClick={() => handleSelectFile(tabPath)}
+                      title={tabPath}
+                    >
+                      <span className="tab-name">{fileName}</span>
+                      <button
+                        className="tab-close-btn"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleCloseTab(tabPath);
+                        }}
+                      >
+                        <X size={12} />
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {activeFile && openTabs.includes(activeFile) ? (
+              <Editor
+                activeFile={activeFile}
+                content={files[activeFile] || ""}
+                onChange={handleContentChange}
+              />
+            ) : (
+              <div className="empty-editor-placeholder">
+                <Cpu size={48} className="placeholder-icon" />
+                <h3>Soroban Sandbox</h3>
+                <p>Select a file from the explorer sidebar or create a new one to start writing smart contracts.</p>
+                <div className="placeholder-actions">
+                  <button className="btn btn-primary" onClick={handleResetFiles}>Reset Workspace</button>
+                </div>
+              </div>
+            )}
+          </div>
 
           <div className="console-panel">
             <div className="console-header">

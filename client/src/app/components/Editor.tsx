@@ -32,11 +32,6 @@ export default function Editor({ activeFile, content, onChange }: EditorProps) {
 
   return (
     <div className="editor-wrapper">
-      <div className="editor-tabs">
-        <div className="editor-tab active">
-          <span>{activeFile}</span>
-        </div>
-      </div>
       <div style={{ flex: 1, position: "relative" }}>
         <MonacoEditor
           height="100%"

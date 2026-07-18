@@ -164,22 +164,40 @@ html, body {
   overflow: hidden;
 }
 
-/* Monaco Custom Integration Wrapper */
+/* Editor Tabs Container */
+.editor-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+  background: hsl(var(--bg-surface));
+}
+
 .editor-wrapper {
   position: relative;
-  height: 100%;
+  flex: 1;
   width: 100%;
   background: hsl(var(--bg-surface));
   display: flex;
   flex-direction: column;
 }
 
-.editor-tabs {
+.editor-tabs-bar {
   display: flex;
-  background: rgba(10, 12, 22, 0.8);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(8, 10, 20, 0.95);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
   overflow-x: auto;
-  height: 35px;
+  height: 36px;
+  flex-shrink: 0;
+}
+
+/* Hide scrollbar for editor-tabs-bar */
+.editor-tabs-bar::-webkit-scrollbar {
+  display: none;
+}
+.editor-tabs-bar {
+  -ms-overflow-style: none;  /* IE and Edge */
+  scrollbar-width: none;  /* Firefox */
 }
 
 .editor-tab {
@@ -187,44 +205,123 @@ html, body {
   align-items: center;
   gap: 8px;
   padding: 0 16px;
-  font-size: 0.8rem;
-  color: hsl(var(--text-secondary));
+  height: 100%;
+  font-size: 0.75rem;
+  color: hsl(var(--text-muted));
   border-right: 1px solid rgba(255, 255, 255, 0.04);
-  background: transparent;
+  background: rgba(12, 14, 28, 0.4);
   cursor: pointer;
-  transition: all 0.2s ease;
-  border-top: 2px solid transparent;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  user-select: none;
 }
 
 .editor-tab:hover {
   background: rgba(255, 255, 255, 0.02);
-  color: hsl(var(--text-primary));
+  color: hsl(var(--text-secondary));
 }
 
 .editor-tab.active {
   background: hsl(var(--bg-surface));
   color: hsl(var(--text-primary));
-  border-top-color: hsl(var(--accent-indigo));
   font-weight: 500;
 }
 
-.editor-tab-close {
+.editor-tab.active::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 2px;
+  background: hsl(var(--accent-violet));
+  box-shadow: 0 0 8px hsl(var(--accent-violet));
+}
+
+.tab-name {
+  white-space: nowrap;
+}
+
+.tab-close-btn {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 14px;
-  height: 14px;
+  width: 16px;
+  height: 16px;
   border-radius: 50%;
-  font-size: 10px;
-  color: hsl(var(--text-muted));
   border: none;
   background: transparent;
+  color: hsl(var(--text-muted));
   cursor: pointer;
+  transition: all 0.15s ease;
+  margin-left: 4px;
 }
 
-.editor-tab-close:hover {
+.tab-close-btn:hover {
   background: rgba(255, 255, 255, 0.1);
-  color: hsl(var(--accent-error));
+  color: hsl(var(--text-primary));
+}
+
+/* Empty Editor Welcome State */
+.empty-editor-placeholder {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 40px;
+  background: hsl(var(--bg-surface));
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.empty-editor-placeholder .placeholder-icon {
+  color: hsl(var(--accent-violet));
+  opacity: 0.25;
+  margin-bottom: 20px;
+  animation: pulse-glow 3s infinite ease-in-out;
+}
+
+@keyframes pulse-glow {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 0.25;
+    filter: drop-shadow(0 0 0px transparent);
+  }
+  50% {
+    transform: scale(1.05);
+    opacity: 0.4;
+    filter: drop-shadow(0 0 8px hsl(var(--accent-violet)));
+  }
+}
+
+.empty-editor-placeholder h3 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: hsl(var(--text-primary));
+  margin-bottom: 8px;
+  letter-spacing: 0.5px;
+}
+
+.empty-editor-placeholder p {
+  font-size: 0.85rem;
+  color: hsl(var(--text-muted));
+  max-width: 320px;
+  margin-bottom: 24px;
+  line-height: 1.5;
+}
+
+.placeholder-actions .btn {
+  padding: 8px 18px;
+  font-size: 0.8rem;
+  font-weight: 500;
+  border-radius: 6px;
+  box-shadow: 0 0 12px rgba(139, 92, 246, 0.25);
+  transition: all 0.2s ease;
+}
+
+.placeholder-actions .btn:hover {
+  box-shadow: 0 0 20px rgba(139, 92, 246, 0.45);
 }
 
 /* Bottom Console / Logs */
