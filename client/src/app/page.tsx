@@ -441,22 +441,15 @@ export default function Home() {
 
   return (
     <div className="ide-container">
-      {/* Header */}
-      <header className="ide-header">
-        <div className="brand">
-          <Cpu size={20} style={{ color: "hsl(var(--accent-violet))" }} />
-          <span>Soroban Playground</span>
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-          <span style={{ fontSize: "0.75rem", color: "hsl(var(--text-muted))" }}>Stellar Smart Contracts Sandbox</span>
-          <div style={{ width: "6px", height: "6px", borderRadius: "50%", background: "hsl(var(--accent-success))" }}></div>
-        </div>
-      </header>
 
       {/* Main Workspace split */}
       <main className="ide-main">
         {/* Left Side: Sidebar with configuration / files */}
         <div className="sidebar">
+          <div className="sidebar-brand-header">
+            <Cpu size={16} style={{ color: "hsl(var(--accent-violet))", marginRight: "8px", flexShrink: 0 }} />
+            <span className="brand-text">Soroban Playground</span>
+          </div>
           <div className="sidebar-tabs">
             <button
               className={`sidebar-tab ${sidebarTab === "explorer" ? "active" : ""}`}
