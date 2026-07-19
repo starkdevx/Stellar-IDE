@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { Folder, Cpu, Activity, Play, RefreshCw, X, ShieldAlert } from "lucide-react";
+import { Folder, Cpu, Activity, Play, RefreshCw, X, ShieldAlert, ChevronUp, ChevronDown } from "lucide-react";
 import FileTree from "./components/FileTree";
 import Editor from "./components/Editor";
 import CompilerPanel from "./components/CompilerPanel";
@@ -67,6 +67,7 @@ export default function Home() {
   const [abi, setAbi] = useState<any[] | null>(null);
   const [wasmBase64, setWasmBase64] = useState<string | null>(null);
   const [contractId, setContractId] = useState<string | null>(null);
+  const [isConsoleMinimized, setIsConsoleMinimized] = useState<boolean>(false);
 
   // Initialize state on client side only (avoid SSR mismatch)
   useEffect(() => {
@@ -517,7 +518,10 @@ export default function Home() {
         </div>
 
         {/* Right Side: Monaco Editor + Bottom Console Logs */}
-        <div className="workspace-right">
+        <div 
+          className="workspace-right"
+          style={{ gridTemplateRows: isConsoleMinimized ? "1fr 35px" : "1fr 200px" }}
+        >
           <div className="editor-container">
             {openTabs.length > 0 && (
               <div className="editor-tabs-bar">
@@ -571,30 +575,50 @@ export default function Home() {
                 <Play size={12} style={{ color: "hsl(var(--accent-success))" }} />
                 <span>EXECUTION LOGS</span>
               </div>
-              <button
-                onClick={clearLogs}
-                style={{
-                  background: "transparent",
-                  border: "none",
-                  color: "hsl(var(--text-muted))",
-                  cursor: "pointer",
-                  fontSize: "0.7rem",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "4px"
-                }}
-              >
-                <X size={10} /> Clear Logs
-              </button>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                <button
+                  onClick={clearLogs}
+                  style={{
+                    background: "transparent",
+                    border: "none",
+                    color: "hsl(var(--text-muted))",
+                    cursor: "pointer",
+                    fontSize: "0.7rem",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "4px"
+                  }}
+                >
+                  <X size={10} /> Clear Logs
+                </button>
+                <div style={{ width: "1px", height: "12px", background: "rgba(255, 255, 255, 0.15)" }}></div>
+                <button
+                  onClick={() => setIsConsoleMinimized(!isConsoleMinimized)}
+                  style={{
+                    background: "transparent",
+                    border: "none",
+                    color: "hsl(var(--text-muted))",
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    padding: "2px"
+                  }}
+                  title={isConsoleMinimized ? "Maximize Console" : "Minimize Console"}
+                >
+                  {isConsoleMinimized ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                </button>
+              </div>
             </div>
-            <div className="console-body">
-              {logs.map((log) => (
-                <div key={log.id} className={`console-line ${log.type}`}>
-                  <span style={{ color: "hsl(var(--text-muted))", marginRight: "8px" }}>[{log.timestamp}]</span>
-                  <span>{log.text}</span>
-                </div>
-              ))}
-            </div>
+            {!isConsoleMinimized && (
+              <div className="console-body">
+                {logs.map((log) => (
+                  <div key={log.id} className={`console-line ${log.type}`}>
+                    <span style={{ color: "hsl(var(--text-muted))", marginRight: "8px" }}>[{log.timestamp}]</span>
+                    <span>{log.text}</span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       </main>
