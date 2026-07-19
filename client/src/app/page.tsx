@@ -497,6 +497,7 @@ export default function Home() {
                   files={files}
                   onCompileSuccess={handleCompileSuccess}
                   addLog={addLog}
+                  wasmBase64={wasmBase64}
                 />
                 <div style={{ borderTop: "1px solid rgba(255, 255, 255, 0.05)", margin: "4px 0" }}></div>
                 <DeployPanel

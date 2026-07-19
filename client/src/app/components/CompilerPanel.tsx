@@ -1,20 +1,23 @@
 "use client";
 
 import React, { useState } from "react";
-import { Cpu, Play, Terminal } from "lucide-react";
+import { Cpu, Play, Terminal, Download, ChevronDown, ChevronRight } from "lucide-react";
 
 interface CompilerPanelProps {
   files: { [path: string]: string };
   onCompileSuccess: (abi: any[], wasmBase64: string) => void;
   addLog: (text: string, type?: "info" | "error" | "success" | "warning") => void;
+  wasmBase64: string | null;
 }
 
 export default function CompilerPanel({
   files,
   onCompileSuccess,
   addLog,
+  wasmBase64,
 }: CompilerPanelProps) {
   const [compiling, setCompiling] = useState(false);
+  const [isSettingsExpanded, setIsSettingsExpanded] = useState(false);
 
   const handleCompile = async () => {
     if (compiling) return;
@@ -62,6 +65,32 @@ export default function CompilerPanel({
     }
   };
 
+  const handleDownloadWasm = () => {
+    if (!wasmBase64) return;
+    try {
+      const binaryString = atob(wasmBase64);
+      const len = binaryString.length;
+      const bytes = new Uint8Array(len);
+      for (let i = 0; i < len; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+      }
+      const blob = new Blob([bytes], { type: "application/wasm" });
+      const url = URL.createObjectURL(blob);
+      
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "contract.wasm";
+      document.body.appendChild(link);
+      link.click();
+      
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      addLog("Exported contract.wasm successfully.", "success");
+    } catch (err: any) {
+      addLog(`Failed to export WASM: ${err.message}`, "error");
+    }
+  };
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
       <div className="panel-title">
@@ -91,17 +120,42 @@ export default function CompilerPanel({
             </>
           )}
         </button>
+
+        {wasmBase64 && (
+          <button
+            className="btn btn-secondary"
+            onClick={handleDownloadWasm}
+            style={{
+              width: "100%",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: "8px",
+              marginTop: "4px"
+            }}
+          >
+            <Download size={15} />
+            <span>Export contract.wasm</span>
+          </button>
+        )}
       </div>
 
       <div style={{ borderTop: "1px solid rgba(255, 255, 255, 0.05)", paddingTop: "12px", display: "flex", flexDirection: "column", gap: "6px" }}>
-        <span className="input-label" style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+        <span 
+          className="input-label" 
+          onClick={() => setIsSettingsExpanded(!isSettingsExpanded)}
+          style={{ display: "flex", alignItems: "center", gap: "6px", cursor: "pointer", userSelect: "none" }}
+        >
+          {isSettingsExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
           <Terminal size={12} /> compiler settings
         </span>
-        <div style={{ display: "flex", flexDirection: "column", gap: "4px", fontSize: "0.7rem", color: "hsl(var(--text-muted))" }}>
-          <div>Target: <code style={{ color: "hsl(var(--text-secondary))" }}>wasm32v1-none</code></div>
-          <div>Optimization: <code style={{ color: "hsl(var(--text-secondary))" }}>-Oz (spec-shaking v2)</code></div>
-          <div>Profile: <code style={{ color: "hsl(var(--text-secondary))" }}>release</code></div>
-        </div>
+        {isSettingsExpanded && (
+          <div style={{ display: "flex", flexDirection: "column", gap: "4px", fontSize: "0.7rem", color: "hsl(var(--text-muted))", paddingLeft: "20px" }}>
+            <div>Target: <code style={{ color: "hsl(var(--text-secondary))" }}>wasm32v1-none</code></div>
+            <div>Optimization: <code style={{ color: "hsl(var(--text-secondary))" }}>-Oz (spec-shaking v2)</code></div>
+            <div>Profile: <code style={{ color: "hsl(var(--text-secondary))" }}>release</code></div>
+          </div>
+        )}
       </div>
     </div>
   );
