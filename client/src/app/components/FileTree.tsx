@@ -445,7 +445,7 @@ export default function FileTree({
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "12px", height: "100%" }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: "6px", height: "100%" }}>
       <div className="panel-title">
         <span>Workspace Explorer</span>
         <div style={{ display: "flex", gap: "8px" }}>

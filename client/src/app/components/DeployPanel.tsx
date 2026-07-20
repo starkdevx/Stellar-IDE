@@ -277,7 +277,7 @@ export default function DeployPanel({
   };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
       <div className="panel-title">
         <span>Deploy Contract</span>
       </div>

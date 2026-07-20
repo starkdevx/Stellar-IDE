@@ -184,7 +184,7 @@ export default function InteractPanel({
   };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
       <div className="panel-title">
         <span>Interact with Contract</span>
       </div>

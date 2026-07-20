@@ -95,7 +95,7 @@ export default function CompilerPanel({
   };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
       <div className="panel-title">
         <span>Compiler Panel</span>
       </div>
