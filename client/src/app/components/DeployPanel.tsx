@@ -9,12 +9,14 @@ interface DeployPanelProps {
   wasmBase64: string | null;
   onDeploySuccess: (contractId: string) => void;
   addLog: (text: string, type?: "info" | "error" | "success" | "warning") => void;
+  projectName?: string;
 }
 
 export default function DeployPanel({
   wasmBase64,
   onDeploySuccess,
   addLog,
+  projectName = "hello-world",
 }: DeployPanelProps) {
   const [walletConnected, setWalletConnected] = useState(false);
   const [address, setAddress] = useState<string>("");
@@ -333,12 +335,12 @@ export default function DeployPanel({
               {!wasmBase64 ? (
                 <div style={{ display: "flex", alignItems: "center", gap: "8px", padding: "8px", background: "rgba(239, 68, 68, 0.05)", border: "1px solid rgba(239, 68, 68, 0.15)", borderRadius: "6px", color: "hsl(var(--accent-error))", fontSize: "0.7rem" }}>
                   <AlertCircle size={14} style={{ flexShrink: 0 }} />
-                  <span>Compile your Rust contract first to enable deployment.</span>
+                  <span>Compile "{projectName}" first to enable deployment.</span>
                 </div>
               ) : (
                 <div style={{ display: "flex", alignItems: "center", gap: "8px", padding: "8px", background: "rgba(16, 185, 129, 0.05)", border: "1px solid rgba(16, 185, 129, 0.15)", borderRadius: "6px", color: "hsl(var(--accent-success))", fontSize: "0.7rem" }}>
                   <ShieldCheck size={14} style={{ flexShrink: 0 }} />
-                  <span>Contract compiled. Ready to deploy.</span>
+                  <span>Contract "{projectName}" compiled. Ready to deploy.</span>
                 </div>
               )}
 
@@ -356,7 +358,7 @@ export default function DeployPanel({
                 ) : (
                   <>
                     <Rocket size={16} />
-                    <span>Deploy to Testnet</span>
+                    <span>Deploy {projectName} to Testnet</span>
                   </>
                 )}
               </button>

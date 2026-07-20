@@ -10,6 +10,7 @@ interface InteractPanelProps {
   contractId: string | null;
   onContractIdChange: (contractId: string) => void;
   addLog: (text: string, type?: "info" | "error" | "success" | "warning") => void;
+  projectName?: string;
 }
 
 export default function InteractPanel({
@@ -17,6 +18,7 @@ export default function InteractPanel({
   contractId,
   onContractIdChange,
   addLog,
+  projectName = "hello-world",
 }: InteractPanelProps) {
   const [manualContractId, setManualContractId] = useState("");
   const [inputValues, setInputValues] = useState<{ [key: string]: string }>({});
@@ -205,7 +207,7 @@ export default function InteractPanel({
       ) : (
         <div style={{ background: "rgba(255, 255, 255, 0.02)", padding: "10px", borderRadius: "6px", border: "1px solid rgba(255, 255, 255, 0.05)", display: "flex", flexDirection: "column", gap: "6px" }}>
           <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.75rem", color: "hsl(var(--text-secondary))" }}>
-            <span style={{ fontWeight: 600 }}>Active Contract:</span>
+            <span style={{ fontWeight: 600 }}>Active Contract ({projectName}):</span>
             <button
               onClick={() => onContractIdChange("")}
               style={{ background: "transparent", border: "none", color: "hsl(var(--accent-error))", cursor: "pointer", fontSize: "0.7rem" }}
