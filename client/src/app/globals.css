@@ -98,9 +98,27 @@ html, body {
 
 .ide-main {
   display: grid;
-  grid-template-columns: 350px 1fr;
+  grid-template-columns: 320px 4px 1fr;
   height: 100%;
   overflow: hidden;
+}
+
+/* Sidebar Draggable Resizer Handle */
+.sidebar-resizer {
+  width: 4px;
+  height: 100%;
+  background: rgba(255, 255, 255, 0.04);
+  cursor: col-resize;
+  position: relative;
+  z-index: 20;
+  transition: background 0.15s ease, box-shadow 0.15s ease;
+  user-select: none;
+}
+
+.sidebar-resizer:hover,
+.sidebar-resizer.dragging {
+  background: hsl(var(--accent-violet));
+  box-shadow: 0 0 10px hsl(var(--accent-violet));
 }
 
 /* Left Sidebar Layout */

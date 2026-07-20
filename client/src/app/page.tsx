@@ -64,6 +64,8 @@ export default function Home() {
   const [sidebarTab, setSidebarTab] = useState<"explorer" | "compiler" | "interact">("explorer");
   const [logs, setLogs] = useState<LogLine[]>([]);
   const [isConsoleMinimized, setIsConsoleMinimized] = useState<boolean>(false);
+  const [sidebarWidth, setSidebarWidth] = useState<number>(320);
+  const [isDraggingSidebar, setIsDraggingSidebar] = useState<boolean>(false);
 
   // Initialize projects & state on client side only (avoid SSR mismatch)
   useEffect(() => {
@@ -144,6 +146,14 @@ export default function Home() {
       }
     }
 
+    const savedWidth = localStorage.getItem("stellar_ide_sidebar_width");
+    if (savedWidth) {
+      const parsed = parseInt(savedWidth, 10);
+      if (!isNaN(parsed) && parsed >= 220 && parsed <= 650) {
+        setSidebarWidth(parsed);
+      }
+    }
+
     setProjects(initialProjects);
     setActiveProjectId(initialActiveId);
     setMounted(true);
@@ -158,6 +168,38 @@ export default function Home() {
       },
     ]);
   }, []);
+
+  // Handle dragging events for resizable sidebar width
+  const handleSidebarMouseDown = (e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsDraggingSidebar(true);
+  };
+
+  useEffect(() => {
+    if (!isDraggingSidebar) return;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      const newWidth = Math.min(Math.max(e.clientX, 220), 650);
+      setSidebarWidth(newWidth);
+    };
+
+    const handleMouseUp = () => {
+      setIsDraggingSidebar(false);
+      localStorage.setItem("stellar_ide_sidebar_width", sidebarWidth.toString());
+    };
+
+    document.addEventListener("mousemove", handleMouseMove);
+    document.addEventListener("mouseup", handleMouseUp);
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+
+    return () => {
+      document.removeEventListener("mousemove", handleMouseMove);
+      document.removeEventListener("mouseup", handleMouseUp);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    };
+  }, [isDraggingSidebar, sidebarWidth]);
 
   // Derive active project state dynamically
   const activeProject = projects.find((p) => p.id === activeProjectId) || projects[0];
@@ -494,9 +536,12 @@ export default function Home() {
     <div className="ide-container">
 
       {/* Main Workspace split */}
-      <main className="ide-main">
+      <main 
+        className="ide-main"
+        style={{ gridTemplateColumns: `${sidebarWidth}px 4px 1fr` }}
+      >
         {/* Left Side: Sidebar with configuration / files */}
-        <div className="sidebar">
+        <div className="sidebar" style={{ width: `${sidebarWidth}px` }}>
           <div className="sidebar-brand-header">
             <Cpu size={16} style={{ color: "hsl(var(--accent-violet))", marginRight: "8px", flexShrink: 0 }} />
             <span className="brand-text">Soroban Playground</span>
@@ -580,6 +625,13 @@ export default function Home() {
             )}
           </div>
         </div>
+
+        {/* Draggable Splitter Handle */}
+        <div 
+          className={`sidebar-resizer ${isDraggingSidebar ? "dragging" : ""}`}
+          onMouseDown={handleSidebarMouseDown}
+          title="Drag to resize sidebar width"
+        />
 
         {/* Right Side: Monaco Editor + Bottom Console Logs */}
         <div 
