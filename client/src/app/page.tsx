@@ -7,6 +7,7 @@ import Editor from "./components/Editor";
 import CompilerPanel from "./components/CompilerPanel";
 import DeployPanel from "./components/DeployPanel";
 import InteractPanel from "./components/InteractPanel";
+import ProjectSelector, { Project } from "./components/ProjectSelector";
 
 // Default template files
 const DEFAULT_FILES = {
@@ -28,12 +29,12 @@ mod test;
   "src/test.rs": `#![cfg(test)]
 
 use super::*;
-use soroban_sdk::{vec, Env, String};
+use soroban_sdk::Env;
 
 #[test]
 fn test() {
     let env = Env::default();
-    let contract_id = env.register(Contract, ());
+    let contract_id = env.register_contract(None, Contract);
     let client = ContractClient::new(&env, &contract_id);
 
     let words = client.hello(&String::from_str(&env, "Dev"));
@@ -58,99 +59,128 @@ interface LogLine {
 
 export default function Home() {
   const [mounted, setMounted] = useState(false);
-  const [files, setFiles] = useState<{ [path: string]: string }>({});
-  const [folders, setFolders] = useState<string[]>([]);
-  const [openTabs, setOpenTabs] = useState<string[]>([]);
-  const [activeFile, setActiveFile] = useState<string>("src/lib.rs");
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [activeProjectId, setActiveProjectId] = useState<string>("");
   const [sidebarTab, setSidebarTab] = useState<"explorer" | "compiler" | "interact">("explorer");
   const [logs, setLogs] = useState<LogLine[]>([]);
-  const [abi, setAbi] = useState<any[] | null>(null);
-  const [wasmBase64, setWasmBase64] = useState<string | null>(null);
-  const [contractId, setContractId] = useState<string | null>(null);
   const [isConsoleMinimized, setIsConsoleMinimized] = useState<boolean>(false);
 
-  // Initialize state on client side only (avoid SSR mismatch)
+  // Initialize projects & state on client side only (avoid SSR mismatch)
   useEffect(() => {
-    const savedFiles = localStorage.getItem("stellar_ide_files");
-    if (savedFiles) {
+    let initialProjects: Project[] = [];
+    let initialActiveId = "";
+
+    const savedProjects = localStorage.getItem("stellar_ide_projects_v1");
+    if (savedProjects) {
       try {
-        const parsed = JSON.parse(savedFiles);
-        delete parsed["Cargo.toml"];
-        setFiles(parsed);
+        initialProjects = JSON.parse(savedProjects);
       } catch {
-        setFiles(DEFAULT_FILES);
+        initialProjects = [];
       }
-    } else {
-      setFiles(DEFAULT_FILES);
     }
 
-    const savedFolders = localStorage.getItem("stellar_ide_folders");
-    if (savedFolders) {
-      try {
-        setFolders(JSON.parse(savedFolders));
-      } catch {
-        setFolders(["src"]);
+    // Migrate legacy data or create default initial project if none exists
+    if (!initialProjects || initialProjects.length === 0) {
+      const savedFiles = localStorage.getItem("stellar_ide_files");
+      const savedFolders = localStorage.getItem("stellar_ide_folders");
+      const savedTabs = localStorage.getItem("stellar_ide_open_tabs");
+      const savedContractId = localStorage.getItem("stellar_ide_contract_id");
+      const savedAbi = localStorage.getItem("stellar_ide_abi");
+      const savedWasm = localStorage.getItem("stellar_ide_wasm");
+
+      let filesData = DEFAULT_FILES;
+      if (savedFiles) {
+        try {
+          const parsed = JSON.parse(savedFiles);
+          delete parsed["Cargo.toml"];
+          filesData = parsed;
+        } catch {}
       }
-    } else {
-      setFolders(["src"]);
-    }
 
-    const savedTabs = localStorage.getItem("stellar_ide_open_tabs");
-    if (savedTabs) {
-      try {
-        setOpenTabs(JSON.parse(savedTabs));
-      } catch {
-        setOpenTabs(["src/lib.rs"]);
+      let foldersData = ["src"];
+      if (savedFolders) {
+        try {
+          foldersData = JSON.parse(savedFolders);
+        } catch {}
       }
+
+      let tabsData = ["src/lib.rs"];
+      if (savedTabs) {
+        try {
+          tabsData = JSON.parse(savedTabs);
+        } catch {}
+      }
+
+      let abiData = null;
+      if (savedAbi) {
+        try {
+          abiData = JSON.parse(savedAbi);
+        } catch {}
+      }
+
+      const defaultProject: Project = {
+        id: "proj_default",
+        name: "hello-world",
+        createdAt: Date.now(),
+        files: filesData,
+        folders: foldersData,
+        openTabs: tabsData,
+        activeFile: "src/lib.rs",
+        abi: abiData,
+        wasmBase64: savedWasm || null,
+        contractId: savedContractId || null,
+      };
+
+      initialProjects = [defaultProject];
+      initialActiveId = defaultProject.id;
+      localStorage.setItem("stellar_ide_projects_v1", JSON.stringify(initialProjects));
+      localStorage.setItem("stellar_ide_active_project_id", initialActiveId);
     } else {
-      setOpenTabs(["src/lib.rs"]);
+      const savedActiveId = localStorage.getItem("stellar_ide_active_project_id");
+      if (savedActiveId && initialProjects.some((p) => p.id === savedActiveId)) {
+        initialActiveId = savedActiveId;
+      } else {
+        initialActiveId = initialProjects[0].id;
+      }
     }
 
-    const savedContractId = localStorage.getItem("stellar_ide_contract_id");
-    if (savedContractId) {
-      setContractId(savedContractId);
-    }
-
-    const savedAbi = localStorage.getItem("stellar_ide_abi");
-    if (savedAbi) {
-      try {
-        setAbi(JSON.parse(savedAbi));
-      } catch {}
-    }
-
-    const savedWasm = localStorage.getItem("stellar_ide_wasm");
-    if (savedWasm) {
-      setWasmBase64(savedWasm);
-    }
-
+    setProjects(initialProjects);
+    setActiveProjectId(initialActiveId);
     setMounted(true);
-    
-    // Add initial greeting log
+
     const now = new Date().toLocaleTimeString();
     setLogs([
       {
         id: "init",
-        text: "Stellar Soroban Browser IDE initialized. Ready to build contracts.",
+        text: "Stellar Soroban Multi-Project IDE initialized. Ready to build contracts.",
         type: "success",
         timestamp: now,
       },
     ]);
   }, []);
 
-  // Save files to localStorage on modification
-  const saveFiles = (updatedFiles: { [path: string]: string }) => {
-    setFiles(updatedFiles);
-    localStorage.setItem("stellar_ide_files", JSON.stringify(updatedFiles));
-  };
+  // Derive active project state dynamically
+  const activeProject = projects.find((p) => p.id === activeProjectId) || projects[0];
+  const files = activeProject?.files || DEFAULT_FILES;
+  const folders = activeProject?.folders || ["src"];
+  const openTabs = activeProject?.openTabs || ["src/lib.rs"];
+  const activeFile = activeProject?.activeFile || "src/lib.rs";
+  const abi = activeProject?.abi || null;
+  const wasmBase64 = activeProject?.wasmBase64 || null;
+  const contractId = activeProject?.contractId || null;
 
-  const saveFolders = (updatedFolders: string[]) => {
-    setFolders(updatedFolders);
-    localStorage.setItem("stellar_ide_folders", JSON.stringify(updatedFolders));
-  };
-
-  const saveTabs = (updatedTabs: string[]) => {
-    setOpenTabs(updatedTabs);
-    localStorage.setItem("stellar_ide_open_tabs", JSON.stringify(updatedTabs));
+  // Persistence helper for updating active project attributes
+  const updateActiveProject = (updatedFields: Partial<Project>) => {
+    setProjects((prevProjects) => {
+      const nextProjects = prevProjects.map((p) => {
+        if (p.id === activeProjectId) {
+          return { ...p, ...updatedFields };
+        }
+        return p;
+      });
+      localStorage.setItem("stellar_ide_projects_v1", JSON.stringify(nextProjects));
+      return nextProjects;
+    });
   };
 
   const addLog = (text: string, type: "info" | "error" | "success" | "warning" = "info") => {
@@ -170,11 +200,64 @@ export default function Home() {
     setLogs([]);
   };
 
-  const handleSelectFile = (path: string) => {
-    if (!openTabs.includes(path)) {
-      saveTabs([...openTabs, path]);
+  // Multi-Project Handlers
+  const handleSelectProject = (id: string) => {
+    setActiveProjectId(id);
+    localStorage.setItem("stellar_ide_active_project_id", id);
+    const target = projects.find((p) => p.id === id);
+    if (target) {
+      addLog(`Switched active workspace to project "${target.name}"`, "info");
     }
-    setActiveFile(path);
+  };
+
+  const handleCreateProject = (name: string) => {
+    const newProj: Project = {
+      id: `proj_${Date.now()}`,
+      name: name.trim() || "untitled-project",
+      createdAt: Date.now(),
+      files: { ...DEFAULT_FILES },
+      folders: ["src"],
+      openTabs: ["src/lib.rs"],
+      activeFile: "src/lib.rs",
+      abi: null,
+      wasmBase64: null,
+      contractId: null,
+    };
+    const nextProjects = [...projects, newProj];
+    setProjects(nextProjects);
+    setActiveProjectId(newProj.id);
+    localStorage.setItem("stellar_ide_projects_v1", JSON.stringify(nextProjects));
+    localStorage.setItem("stellar_ide_active_project_id", newProj.id);
+    addLog(`Created new project workspace "${newProj.name}"`, "success");
+  };
+
+  const handleRenameProject = (id: string, newName: string) => {
+    setProjects((prev) => {
+      const updated = prev.map((p) => (p.id === id ? { ...p, name: newName } : p));
+      localStorage.setItem("stellar_ide_projects_v1", JSON.stringify(updated));
+      return updated;
+    });
+    addLog(`Renamed project workspace to "${newName}"`, "info");
+  };
+
+  const handleDeleteProject = (id: string) => {
+    if (projects.length <= 1) return;
+    const remaining = projects.filter((p) => p.id !== id);
+    setProjects(remaining);
+    let nextActiveId = activeProjectId;
+    if (activeProjectId === id) {
+      nextActiveId = remaining[0].id;
+      setActiveProjectId(nextActiveId);
+    }
+    localStorage.setItem("stellar_ide_projects_v1", JSON.stringify(remaining));
+    localStorage.setItem("stellar_ide_active_project_id", nextActiveId);
+    addLog(`Deleted project workspace`, "warning");
+  };
+
+  // File system and tab handlers for active project
+  const handleSelectFile = (path: string) => {
+    const newTabs = openTabs.includes(path) ? openTabs : [...openTabs, path];
+    updateActiveProject({ openTabs: newTabs, activeFile: path });
   };
 
   const handleCreateFile = (path: string) => {
@@ -182,11 +265,10 @@ export default function Home() {
       alert("File already exists!");
       return;
     }
-    const updated = { ...files, [path]: "" };
-    saveFiles(updated);
+    const updatedFiles = { ...files, [path]: "" };
 
-    // Auto-detect and add parent directories to folders state
     const parts = path.split("/");
+    let updatedFolders = [...folders];
     if (parts.length > 1) {
       const parentDirs: string[] = [];
       let currentPath = "";
@@ -194,43 +276,39 @@ export default function Home() {
         currentPath = currentPath ? `${currentPath}/${parts[i]}` : parts[i];
         parentDirs.push(currentPath);
       }
-
-      let foldersUpdated = false;
-      const newFolders = [...folders];
       parentDirs.forEach((dir) => {
-        if (!newFolders.includes(dir)) {
-          newFolders.push(dir);
-          foldersUpdated = true;
+        if (!updatedFolders.includes(dir)) {
+          updatedFolders.push(dir);
         }
       });
-      if (foldersUpdated) {
-        saveFolders(newFolders);
-      }
     }
 
-    if (!openTabs.includes(path)) {
-      saveTabs([...openTabs, path]);
-    }
-    setActiveFile(path);
+    const updatedTabs = openTabs.includes(path) ? openTabs : [...openTabs, path];
+    updateActiveProject({
+      files: updatedFiles,
+      folders: updatedFolders,
+      openTabs: updatedTabs,
+      activeFile: path,
+    });
     addLog(`Created file: ${path}`, "info");
   };
 
   const handleDeleteFile = (path: string) => {
     if (path === "src/lib.rs" || path === "Cargo.toml") return;
-    const updated = { ...files };
-    delete updated[path];
-    saveFiles(updated);
+    const updatedFiles = { ...files };
+    delete updatedFiles[path];
 
     const remainingTabs = openTabs.filter((t) => t !== path);
-    saveTabs(remainingTabs);
-
+    let nextActiveFile = activeFile;
     if (activeFile === path) {
-      if (remainingTabs.length > 0) {
-        setActiveFile(remainingTabs[remainingTabs.length - 1]);
-      } else {
-        setActiveFile("");
-      }
+      nextActiveFile = remainingTabs.length > 0 ? remainingTabs[remainingTabs.length - 1] : "";
     }
+
+    updateActiveProject({
+      files: updatedFiles,
+      openTabs: remainingTabs,
+      activeFile: nextActiveFile,
+    });
     addLog(`Deleted file: ${path}`, "warning");
   };
 
@@ -241,18 +319,19 @@ export default function Home() {
       alert("A file with this name already exists!");
       return;
     }
-    const updated = { ...files };
-    const content = updated[oldPath];
-    delete updated[oldPath];
-    updated[newPath] = content;
-    saveFiles(updated);
+    const updatedFiles = { ...files };
+    const content = updatedFiles[oldPath];
+    delete updatedFiles[oldPath];
+    updatedFiles[newPath] = content;
 
     const updatedTabs = openTabs.map((t) => (t === oldPath ? newPath : t));
-    saveTabs(updatedTabs);
+    const nextActiveFile = activeFile === oldPath ? newPath : activeFile;
 
-    if (activeFile === oldPath) {
-      setActiveFile(newPath);
-    }
+    updateActiveProject({
+      files: updatedFiles,
+      openTabs: updatedTabs,
+      activeFile: nextActiveFile,
+    });
     addLog(`Renamed file: ${oldPath} -> ${newPath}`, "info");
   };
 
@@ -266,8 +345,7 @@ export default function Home() {
       alert("Folder already exists!");
       return;
     }
-    const updated = [...folders, finalPath];
-    saveFolders(updated);
+    updateActiveProject({ folders: [...folders, finalPath] });
     addLog(`Created folder: ${finalPath}`, "info");
   };
 
@@ -283,7 +361,6 @@ export default function Home() {
       return;
     }
 
-    // 1. Rename parent folders and all subfolders
     const updatedFolders = folders.map((f) => {
       if (f === oldPath) return finalNewPath;
       if (f.startsWith(`${oldPath}/`)) {
@@ -291,50 +368,40 @@ export default function Home() {
       }
       return f;
     });
-    saveFolders(updatedFolders);
 
-    // 2. Rename all child files
     const updatedFiles = { ...files };
-    let activeFileUpdated = false;
     let nextActiveFile = activeFile;
-
     for (const filePath of Object.keys(updatedFiles)) {
       if (filePath.startsWith(`${oldPath}/`)) {
         const newFilePath = filePath.replace(oldPath, finalNewPath);
         updatedFiles[newFilePath] = updatedFiles[filePath];
         delete updatedFiles[filePath];
-
         if (activeFile === filePath) {
           nextActiveFile = newFilePath;
-          activeFileUpdated = true;
         }
       }
     }
-    saveFiles(updatedFiles);
 
-    // 3. Rename tabs
     const updatedTabs = openTabs.map((t) => {
       if (t.startsWith(`${oldPath}/`)) {
         return t.replace(oldPath, finalNewPath);
       }
       return t;
     });
-    saveTabs(updatedTabs);
 
-    if (activeFileUpdated) {
-      setActiveFile(nextActiveFile);
-    }
+    updateActiveProject({
+      folders: updatedFolders,
+      files: updatedFiles,
+      openTabs: updatedTabs,
+      activeFile: nextActiveFile,
+    });
     addLog(`Renamed folder: ${oldPath} -> ${finalNewPath}`, "info");
   };
 
   const handleDeleteFolder = (path: string) => {
     if (path === "src") return;
-    
-    // 1. Delete matching folders and subfolders
-    const updatedFolders = folders.filter((f) => f !== path && !f.startsWith(`${path}/`));
-    saveFolders(updatedFolders);
 
-    // 2. Delete child files
+    const updatedFolders = folders.filter((f) => f !== path && !f.startsWith(`${path}/`));
     const updatedFiles = { ...files };
     let activeFileUpdated = false;
 
@@ -346,80 +413,62 @@ export default function Home() {
         }
       }
     }
-    saveFiles(updatedFiles);
 
-    // 3. Remove child tabs
     const remainingTabs = openTabs.filter((t) => !t.startsWith(`${path}/`));
-    saveTabs(remainingTabs);
-
+    let nextActiveFile = activeFile;
     if (activeFileUpdated) {
-      if (remainingTabs.length > 0) {
-        setActiveFile(remainingTabs[remainingTabs.length - 1]);
-      } else {
-        setActiveFile("");
-      }
+      nextActiveFile = remainingTabs.length > 0 ? remainingTabs[remainingTabs.length - 1] : "";
     }
+
+    updateActiveProject({
+      folders: updatedFolders,
+      files: updatedFiles,
+      openTabs: remainingTabs,
+      activeFile: nextActiveFile,
+    });
     addLog(`Deleted folder: ${path}`, "warning");
   };
 
   const handleCloseTab = (path: string) => {
     const remainingTabs = openTabs.filter((t) => t !== path);
-    saveTabs(remainingTabs);
-
+    let nextActiveFile = activeFile;
     if (activeFile === path) {
-      if (remainingTabs.length > 0) {
-        setActiveFile(remainingTabs[remainingTabs.length - 1]);
-      } else {
-        setActiveFile("");
-      }
+      nextActiveFile = remainingTabs.length > 0 ? remainingTabs[remainingTabs.length - 1] : "";
     }
+    updateActiveProject({ openTabs: remainingTabs, activeFile: nextActiveFile });
   };
 
   const handleResetFiles = () => {
-    saveFiles(DEFAULT_FILES);
-    saveFolders(["src"]);
-    saveTabs(["src/lib.rs"]);
-    setActiveFile("src/lib.rs");
-    setAbi(null);
-    setWasmBase64(null);
-    setContractId(null);
-    localStorage.removeItem("stellar_ide_abi");
-    localStorage.removeItem("stellar_ide_wasm");
-    localStorage.removeItem("stellar_ide_contract_id");
-    localStorage.removeItem("stellar_ide_folders");
-    localStorage.removeItem("stellar_ide_open_tabs");
-    addLog("Workspace files reset to default template.", "info");
+    updateActiveProject({
+      files: DEFAULT_FILES,
+      folders: ["src"],
+      openTabs: ["src/lib.rs"],
+      activeFile: "src/lib.rs",
+      abi: null,
+      wasmBase64: null,
+      contractId: null,
+    });
+    addLog(`Reset project "${activeProject?.name}" files to default template.`, "info");
   };
 
   const handleContentChange = (val: string | undefined) => {
-    if (val === undefined) return;
-    const updated = { ...files, [activeFile]: val };
-    saveFiles(updated);
+    if (val === undefined || !activeFile) return;
+    const updatedFiles = { ...files, [activeFile]: val };
+    updateActiveProject({ files: updatedFiles });
   };
 
   const handleCompileSuccess = (newAbi: any[], wasm: string) => {
-    setAbi(newAbi);
-    setWasmBase64(wasm);
-    localStorage.setItem("stellar_ide_abi", JSON.stringify(newAbi));
-    localStorage.setItem("stellar_ide_wasm", wasm);
-    
-    // Automatically switch tab to deploy/interact to guide user flow
+    updateActiveProject({ abi: newAbi, wasmBase64: wasm });
     setSidebarTab("compiler");
   };
 
   const handleDeploySuccess = (id: string) => {
-    setContractId(id);
-    localStorage.setItem("stellar_ide_contract_id", id);
+    updateActiveProject({ contractId: id });
     setSidebarTab("interact");
   };
 
   const handleContractIdChange = (id: string) => {
-    setContractId(id || null);
-    if (id) {
-      localStorage.setItem("stellar_ide_contract_id", id);
-    } else {
-      localStorage.removeItem("stellar_ide_contract_id");
-    }
+    updateActiveProject({ contractId: id || null });
   };
 
   if (!mounted) {
@@ -477,19 +526,29 @@ export default function Home() {
 
           <div className="sidebar-content">
             {sidebarTab === "explorer" && (
-              <FileTree
-                files={files}
-                folders={folders}
-                activeFile={activeFile}
-                onSelectFile={handleSelectFile}
-                onCreateFile={handleCreateFile}
-                onDeleteFile={handleDeleteFile}
-                onRenameFile={handleRenameFile}
-                onCreateFolder={handleCreateFolder}
-                onRenameFolder={handleRenameFolder}
-                onDeleteFolder={handleDeleteFolder}
-                onResetFiles={handleResetFiles}
-              />
+              <>
+                <ProjectSelector
+                  projects={projects}
+                  activeProjectId={activeProjectId}
+                  onSelectProject={handleSelectProject}
+                  onCreateProject={handleCreateProject}
+                  onRenameProject={handleRenameProject}
+                  onDeleteProject={handleDeleteProject}
+                />
+                <FileTree
+                  files={files}
+                  folders={folders}
+                  activeFile={activeFile}
+                  onSelectFile={handleSelectFile}
+                  onCreateFile={handleCreateFile}
+                  onDeleteFile={handleDeleteFile}
+                  onRenameFile={handleRenameFile}
+                  onCreateFolder={handleCreateFolder}
+                  onRenameFolder={handleRenameFolder}
+                  onDeleteFolder={handleDeleteFolder}
+                  onResetFiles={handleResetFiles}
+                />
+              </>
             )}
             {sidebarTab === "compiler" && (
               <>

@@ -38,6 +38,12 @@ app.post('/api/compile', async (req: express.Request, res: express.Response) => 
   }
 
   try {
+    // Clean existing src directory to isolate project compilations
+    const srcDir = path.join(CONTRACT_DIR, 'src');
+    if (fs.existsSync(srcDir)) {
+      fs.rmSync(srcDir, { recursive: true, force: true });
+    }
+
     // Write files to workspace safely
     for (const [relPath, content] of Object.entries(files)) {
       if (typeof content !== 'string') {
