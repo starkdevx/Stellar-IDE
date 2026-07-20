@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { Folder, Cpu, Activity, Play, RefreshCw, X, ShieldAlert, ChevronUp, ChevronDown } from "lucide-react";
+import { Folder, Cpu, Activity, Play, RefreshCw, X, ShieldAlert, ChevronUp, ChevronDown, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import FileTree from "./components/FileTree";
 import Editor from "./components/Editor";
 import CompilerPanel from "./components/CompilerPanel";
@@ -66,6 +66,7 @@ export default function Home() {
   const [isConsoleMinimized, setIsConsoleMinimized] = useState<boolean>(false);
   const [sidebarWidth, setSidebarWidth] = useState<number>(320);
   const [isDraggingSidebar, setIsDraggingSidebar] = useState<boolean>(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(false);
 
   // Initialize projects & state on client side only (avoid SSR mismatch)
   useEffect(() => {
@@ -538,13 +539,26 @@ export default function Home() {
       {/* Main Workspace split */}
       <main 
         className="ide-main"
-        style={{ gridTemplateColumns: `${sidebarWidth}px 4px 1fr` }}
+        style={{ gridTemplateColumns: isSidebarCollapsed ? "1fr" : `${sidebarWidth}px 4px 1fr` }}
       >
         {/* Left Side: Sidebar with configuration / files */}
-        <div className="sidebar" style={{ width: `${sidebarWidth}px` }}>
+        <div 
+          className="sidebar" 
+          style={{ 
+            width: `${sidebarWidth}px`,
+            display: isSidebarCollapsed ? "none" : "flex"
+          }}
+        >
           <div className="sidebar-brand-header">
             <Cpu size={16} style={{ color: "hsl(var(--accent-violet))", marginRight: "8px", flexShrink: 0 }} />
             <span className="brand-text">Soroban Playground</span>
+            <button
+              className="sidebar-toggle-btn"
+              onClick={() => setIsSidebarCollapsed(true)}
+              title="Collapse Sidebar Explorer (Full Screen Code Editor)"
+            >
+              <PanelLeftClose size={16} />
+            </button>
           </div>
           <div className="sidebar-tabs">
             <button
@@ -631,6 +645,7 @@ export default function Home() {
           className={`sidebar-resizer ${isDraggingSidebar ? "dragging" : ""}`}
           onMouseDown={handleSidebarMouseDown}
           title="Drag to resize sidebar width"
+          style={{ display: isSidebarCollapsed ? "none" : "block" }}
         />
 
         {/* Right Side: Monaco Editor + Bottom Console Logs */}
@@ -639,8 +654,17 @@ export default function Home() {
           style={{ gridTemplateRows: isConsoleMinimized ? "1fr 35px" : "1fr 200px" }}
         >
           <div className="editor-container">
-            {openTabs.length > 0 && (
+            {(openTabs.length > 0 || isSidebarCollapsed) && (
               <div className="editor-tabs-bar">
+                {isSidebarCollapsed && (
+                  <button
+                    className="sidebar-expand-floating-btn"
+                    onClick={() => setIsSidebarCollapsed(false)}
+                    title="Expand Sidebar Explorer"
+                  >
+                    <PanelLeftOpen size={16} />
+                  </button>
+                )}
                 {openTabs.map((tabPath) => {
                   const isActive = tabPath === activeFile;
                   const fileName = tabPath.split("/").pop() || tabPath;
