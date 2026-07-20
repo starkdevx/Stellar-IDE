@@ -161,6 +161,7 @@ export default function Home() {
 
   // Derive active project state dynamically
   const activeProject = projects.find((p) => p.id === activeProjectId) || projects[0];
+  const activeProjectName = activeProject?.name || "hello-world";
   const files = activeProject?.files || DEFAULT_FILES;
   const folders = activeProject?.folders || ["src"];
   const openTabs = activeProject?.openTabs || ["src/lib.rs"];
@@ -557,12 +558,14 @@ export default function Home() {
                   onCompileSuccess={handleCompileSuccess}
                   addLog={addLog}
                   wasmBase64={wasmBase64}
+                  projectName={activeProjectName}
                 />
                 <div style={{ borderTop: "1px solid rgba(255, 255, 255, 0.05)", margin: "4px 0" }}></div>
                 <DeployPanel
                   wasmBase64={wasmBase64}
                   onDeploySuccess={handleDeploySuccess}
                   addLog={addLog}
+                  projectName={activeProjectName}
                 />
               </>
             )}
@@ -572,6 +575,7 @@ export default function Home() {
                 contractId={contractId}
                 onContractIdChange={handleContractIdChange}
                 addLog={addLog}
+                projectName={activeProjectName}
               />
             )}
           </div>
@@ -620,7 +624,7 @@ export default function Home() {
             ) : (
               <div className="empty-editor-placeholder">
                 <Cpu size={48} className="placeholder-icon" />
-                <h3>Soroban Sandbox</h3>
+                <h3>{activeProject?.name || "Soroban Sandbox"}</h3>
                 <p>Select a file from the explorer sidebar or create a new one to start writing smart contracts.</p>
                 <div className="placeholder-actions">
                   <button className="btn btn-primary" onClick={handleResetFiles}>Reset Workspace</button>

@@ -8,6 +8,7 @@ interface CompilerPanelProps {
   onCompileSuccess: (abi: any[], wasmBase64: string) => void;
   addLog: (text: string, type?: "info" | "error" | "success" | "warning") => void;
   wasmBase64: string | null;
+  projectName?: string;
 }
 
 export default function CompilerPanel({
@@ -15,6 +16,7 @@ export default function CompilerPanel({
   onCompileSuccess,
   addLog,
   wasmBase64,
+  projectName = "hello-world",
 }: CompilerPanelProps) {
   const [compiling, setCompiling] = useState(false);
   const [isSettingsExpanded, setIsSettingsExpanded] = useState(false);
@@ -22,7 +24,7 @@ export default function CompilerPanel({
   const handleCompile = async () => {
     if (compiling) return;
     setCompiling(true);
-    addLog("Initiating contract compilation...", "info");
+    addLog(`Initiating compilation for "${projectName}"...`, "info");
 
     const compilerUrl = process.env.NEXT_PUBLIC_COMPILER_URL || "http://localhost:5000";
 
@@ -49,7 +51,7 @@ export default function CompilerPanel({
         return;
       }
 
-      addLog("Compilation complete!", "success");
+      addLog(`Compilation of "${projectName}" complete!`, "success");
       if (data.logs) {
         addLog(data.logs, "info");
       }
@@ -77,15 +79,16 @@ export default function CompilerPanel({
       const blob = new Blob([bytes], { type: "application/wasm" });
       const url = URL.createObjectURL(blob);
       
+      const fileName = `${projectName || "contract"}.wasm`;
       const link = document.createElement("a");
       link.href = url;
-      link.download = "contract.wasm";
+      link.download = fileName;
       document.body.appendChild(link);
       link.click();
       
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
-      addLog("Exported contract.wasm successfully.", "success");
+      addLog(`Exported ${fileName} successfully.`, "success");
     } catch (err: any) {
       addLog(`Failed to export WASM: ${err.message}`, "error");
     }
@@ -99,7 +102,7 @@ export default function CompilerPanel({
 
       <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
         <p style={{ fontSize: "0.75rem", color: "hsl(var(--text-secondary))", lineHeight: "1.4" }}>
-          Compile the Rust workspace to WebAssembly and generate the contract metadata ABI specification.
+          Compile the <code style={{ color: "hsl(var(--accent-cyan))" }}>{projectName}</code> Rust workspace to WebAssembly and generate ABI spec.
         </p>
 
         <button
@@ -111,12 +114,12 @@ export default function CompilerPanel({
           {compiling ? (
             <>
               <div className="spinner"></div>
-              <span>Compiling Contract...</span>
+              <span>Compiling {projectName}...</span>
             </>
           ) : (
             <>
               <Cpu size={16} />
-              <span>Compile hello-world</span>
+              <span>Compile {projectName}</span>
             </>
           )}
         </button>
@@ -135,7 +138,7 @@ export default function CompilerPanel({
             }}
           >
             <Download size={15} />
-            <span>Export contract.wasm</span>
+            <span>Export {projectName}.wasm</span>
           </button>
         )}
       </div>
