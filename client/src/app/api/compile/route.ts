@@ -24,11 +24,14 @@ export async function POST(request: Request) {
     });
 
     const data = await res.json();
-    return NextResponse.json(data, { status: res.status });
+    return NextResponse.json(data, { status: 200 });
   } catch (err: any) {
     return NextResponse.json(
-      { success: false, error: `Compiler Proxy Connection Error: ${err.message}` },
-      { status: 500 }
+      {
+        success: false,
+        error: `Compiler Proxy Connection Error: ${err.message}. Check if compiler backend is running on EC2.`,
+      },
+      { status: 200 }
     );
   }
 }
