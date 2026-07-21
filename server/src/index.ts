@@ -14,7 +14,7 @@ app.use(cors({
 
 app.use(express.json());
 
-const WORKSPACE_DIR = '/home/akshay/wslProjects/stellar/stellar-ide/test-build';
+const WORKSPACE_DIR = process.env.WORKSPACE_DIR || path.resolve(process.cwd(), '../test-build');
 const CONTRACT_DIR = path.resolve(WORKSPACE_DIR, 'contracts/hello-world');
 
 // Secure path validation to prevent directory traversal
@@ -122,7 +122,7 @@ app.post('/api/compile', async (req: express.Request, res: express.Response) => 
   }
 });
 
-// Start Express server on localhost (127.0.0.1) as required by security guidelines
-app.listen(Number(PORT), '127.0.0.1', () => {
-  console.log(`Stellar Soroban compiler server running at http://127.0.0.1:${PORT}`);
+// Start Express server on 0.0.0.0 to accept external network traffic
+app.listen(Number(PORT), '0.0.0.0', () => {
+  console.log(`Stellar Soroban compiler server running at http://0.0.0.0:${PORT}`);
 });
