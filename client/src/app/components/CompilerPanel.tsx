@@ -26,15 +26,7 @@ export default function CompilerPanel({
     setCompiling(true);
     addLog(`Initiating compilation for "${projectName}"...`, "info");
 
-    let endpoint = "/api/compile";
-    if (process.env.NEXT_PUBLIC_COMPILER_URL) {
-      let raw = process.env.NEXT_PUBLIC_COMPILER_URL.trim();
-      if (!raw.startsWith("http://") && !raw.startsWith("https://") && !raw.startsWith("/")) {
-        raw = `http://${raw}`;
-      }
-      raw = raw.replace(/\/+$/, "");
-      endpoint = raw.endsWith("/api/compile") ? raw : `${raw}/api/compile`;
-    }
+    const endpoint = "/api/compile";
 
     try {
       const response = await fetch(endpoint, {
