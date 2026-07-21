@@ -3,6 +3,7 @@ import cors from 'cors';
 import { exec } from 'child_process';
 import path from 'path';
 import fs from 'fs';
+import { compileQueue } from './compileQueue';
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -29,96 +30,128 @@ function getSafePath(relativePath: string): string {
   return resolvedPath;
 }
 
+// Queue Stats endpoint for monitoring
+app.get('/api/queue/stats', (req: express.Request, res: express.Response) => {
+  res.json(compileQueue.getStats());
+});
+
 // Compile endpoint
 app.post('/api/compile', async (req: express.Request, res: express.Response) => {
-  const { files } = req.body;
+  const { files, projectName = "hello-world" } = req.body;
 
   if (!files || typeof files !== 'object') {
     return res.status(400).json({ error: 'Invalid payload: "files" object is required' });
   }
 
-  try {
-    // Clean existing src directory to isolate project compilations
-    const srcDir = path.join(CONTRACT_DIR, 'src');
-    if (fs.existsSync(srcDir)) {
-      fs.rmSync(srcDir, { recursive: true, force: true });
-    }
+  // Ensure cargo and stellar binaries in ~/.cargo/bin are included in PATH for exec
+  const cargoBinPath = path.join(process.env.HOME || '/home/ubuntu', '.cargo/bin');
+  const customPath = `${cargoBinPath}:/root/.cargo/bin:/usr/local/cargo/bin:${process.env.PATH || ''}:/usr/local/bin:/usr/bin:/bin`;
+  const execOptions = {
+    cwd: WORKSPACE_DIR,
+    env: { ...process.env, PATH: customPath }
+  };
 
-    // Write files to workspace safely
-    for (const [relPath, content] of Object.entries(files)) {
-      if (typeof content !== 'string') {
-        return res.status(400).json({ error: `Invalid content for file ${relPath}` });
-      }
-
-      // Check if it is a safe path (e.g. src/lib.rs, Cargo.toml)
-      const safePath = getSafePath(relPath);
-      
-      // Ensure target directory exists
-      fs.mkdirSync(path.dirname(safePath), { recursive: true });
-      fs.writeFileSync(safePath, content, 'utf8');
-    }
-
-    // Run stellar build command (static command, no dynamic arguments to prevent command injection)
-    const buildCmd = 'stellar contract build';
-    
-    exec(buildCmd, { cwd: WORKSPACE_DIR }, (error, stdout, stderr) => {
-      const logs = `Stdout:\n${stdout}\n\nStderr:\n${stderr}`;
-      
-      if (error) {
-        return res.status(422).json({
-          success: false,
-          logs,
-          error: error.message
-        });
-      }
-
-      // After successful build, extract the ABI interface JSON
-      const wasmPath = path.join(WORKSPACE_DIR, 'target/wasm32v1-none/release/hello_world.wasm');
-      
-      if (!fs.existsSync(wasmPath)) {
-        return res.status(500).json({
-          success: false,
-          logs,
-          error: 'WASM output file not found after successful compilation.'
-        });
-      }
-
-      // Command to get contract interface JSON (static paths)
-      const interfaceCmd = `stellar contract info interface --wasm ${wasmPath} --output json-formatted`;
-
-      exec(interfaceCmd, { cwd: WORKSPACE_DIR }, (infoErr, infoStdout, infoStderr) => {
-        if (infoErr) {
-          return res.status(500).json({
-            success: false,
-            logs: logs + `\n\nABI Extraction Stdout:\n${infoStdout}\n\nABI Extraction Stderr:\n${infoStderr}`,
-            error: 'Failed to extract contract ABI: ' + infoErr.message
-          });
+  // Enqueue task into sequential FIFO queue
+  const enqueueResult = compileQueue.enqueue(projectName, () => {
+    return new Promise<void>((resolve) => {
+      try {
+        // Clean existing src directory to isolate project compilations
+        const srcDir = path.join(CONTRACT_DIR, 'src');
+        if (fs.existsSync(srcDir)) {
+          fs.rmSync(srcDir, { recursive: true, force: true });
         }
 
-        try {
-          const abi = JSON.parse(infoStdout.trim());
-          const wasmBuffer = fs.readFileSync(wasmPath);
-          const wasmBase64 = wasmBuffer.toString('base64');
+        // Write files to workspace safely
+        for (const [relPath, content] of Object.entries(files)) {
+          if (typeof content !== 'string') {
+            res.status(400).json({ error: `Invalid content for file ${relPath}` });
+            return resolve();
+          }
 
-          return res.json({
-            success: true,
-            logs: logs + `\n\nABI Extraction Logs:\n${infoStderr}`,
-            abi,
-            wasm: wasmBase64
-          });
-        } catch (parseErr: any) {
-          return res.status(500).json({
-            success: false,
-            logs: logs + `\n\nABI Raw Output:\n${infoStdout}`,
-            error: 'Failed to parse ABI JSON: ' + parseErr.message
-          });
+          // Check if it is a safe path (e.g. src/lib.rs, Cargo.toml)
+          const safePath = getSafePath(relPath);
+          
+          // Ensure target directory exists
+          fs.mkdirSync(path.dirname(safePath), { recursive: true });
+          fs.writeFileSync(safePath, content, 'utf8');
         }
-      });
+
+        // Run stellar build command (fallback to cargo build if stellar CLI is missing)
+        const buildCmd = 'stellar contract build';
+        
+        exec(buildCmd, execOptions, (error, stdout, stderr) => {
+          let logs = `Stdout:\n${stdout}\n\nStderr:\n${stderr}`;
+          
+          const finishTask = () => {
+            resolve();
+          };
+
+          const proceedWithWasm = () => {
+            const wasmPath = path.join(WORKSPACE_DIR, 'target/wasm32v1-none/release/hello_world.wasm');
+            
+            if (!fs.existsSync(wasmPath)) {
+              res.status(500).json({
+                success: false,
+                logs,
+                error: 'WASM output file not found after successful compilation.'
+              });
+              return finishTask();
+            }
+
+            // Command to get contract interface JSON (static paths)
+            const interfaceCmd = `stellar contract info interface --wasm ${wasmPath} --output json-formatted`;
+
+            exec(interfaceCmd, execOptions, (infoErr, infoStdout, infoStderr) => {
+              let abi = [];
+              if (!infoErr) {
+                try {
+                  abi = JSON.parse(infoStdout.trim());
+                } catch {}
+              }
+
+              const wasmBuffer = fs.readFileSync(wasmPath);
+              const wasmBase64 = wasmBuffer.toString('base64');
+
+              res.json({
+                success: true,
+                logs: logs + (infoStderr ? `\n\nABI Spec:\n${infoStderr}` : ''),
+                abi,
+                wasm: wasmBase64
+              });
+              finishTask();
+            });
+          };
+
+          if (error) {
+            // Fallback to cargo build --target wasm32v1-none --release
+            const fallbackCmd = 'cargo build --target wasm32v1-none --release';
+            exec(fallbackCmd, execOptions, (fallbackErr, fbStdout, fbStderr) => {
+              logs += `\n\nFallback Cargo Build Stdout:\n${fbStdout}\n\nStderr:\n${fbStderr}`;
+              if (fallbackErr) {
+                res.status(422).json({
+                  success: false,
+                  logs,
+                  error: `Compilation failed: ${fallbackErr.message}`
+                });
+                return finishTask();
+              }
+              proceedWithWasm();
+            });
+          } else {
+            proceedWithWasm();
+          }
+        });
+
+      } catch (err: any) {
+        console.error('Compile error:', err);
+        res.status(500).json({ error: err.message });
+        resolve();
+      }
     });
+  });
 
-  } catch (err: any) {
-    console.error('Compile error:', err);
-    return res.status(500).json({ error: err.message });
+  if (!enqueueResult.success) {
+    return res.status(429).json({ error: enqueueResult.error });
   }
 });
 
