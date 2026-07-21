@@ -30,6 +30,17 @@ function getSafePath(relativePath: string): string {
   return resolvedPath;
 }
 
+// Sanitize logs to prevent internal server path leaks (CWE-200)
+function sanitizeLogs(rawLogs: string): string {
+  if (!rawLogs) return '';
+  return rawLogs
+    .replace(/\/home\/[^\/]+\/[^\s\)\"]+/g, (match) => {
+      if (match.includes('.cargo')) return '[cargo-registry]';
+      return '[workspace]';
+    })
+    .replace(new RegExp(WORKSPACE_DIR.replace(/\\/g, '\\\\'), 'g'), '[workspace]');
+}
+
 // Queue Stats endpoint for monitoring
 app.get('/api/queue/stats', (req: express.Request, res: express.Response) => {
   res.json(compileQueue.getStats());
@@ -114,7 +125,7 @@ app.post('/api/compile', async (req: express.Request, res: express.Response) => 
 
               res.json({
                 success: true,
-                logs: logs + (infoStderr ? `\n\nABI Spec:\n${infoStderr}` : ''),
+                logs: sanitizeLogs(logs + (infoStderr ? `\n\nABI Spec:\n${infoStderr}` : '')),
                 abi,
                 wasm: wasmBase64
               });
@@ -130,7 +141,7 @@ app.post('/api/compile', async (req: express.Request, res: express.Response) => 
               if (fallbackErr) {
                 res.status(422).json({
                   success: false,
-                  logs,
+                  logs: sanitizeLogs(logs),
                   error: `Compilation failed: ${fallbackErr.message}`
                 });
                 return finishTask();
