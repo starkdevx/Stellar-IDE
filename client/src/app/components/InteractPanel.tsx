@@ -4,6 +4,7 @@ import React, { useState } from "react";
 import * as StellarSdk from "@stellar/stellar-sdk";
 import { getAddress } from "@stellar/freighter-api";
 import { Play, Code, CheckCircle, AlertTriangle } from "lucide-react";
+import { getActiveWalletType, getOrCreatePlaygroundSecret, getPublicKeyFromSecret } from "../utils/wallet";
 
 interface InteractPanelProps {
   abi: any[] | null;
@@ -95,10 +96,22 @@ export default function InteractPanel({
     addLog(`Invoking contract method "${funcName}"...`, "info");
 
     try {
-      const userAddressResult = await getAddress();
-      const userAddress = typeof userAddressResult === "string" ? userAddressResult : (userAddressResult?.address || "");
-      if (!userAddress) {
-        throw new Error("Freighter wallet is not connected.");
+      const walletType = getActiveWalletType();
+      let userAddress = "";
+      let playgroundSecret = "";
+
+      if (walletType === "playground") {
+        playgroundSecret = getOrCreatePlaygroundSecret();
+        userAddress = getPublicKeyFromSecret(playgroundSecret);
+        if (!userAddress) {
+          throw new Error("Playground wallet is not initialized.");
+        }
+      } else {
+        const userAddressResult = await getAddress();
+        userAddress = typeof userAddressResult === "string" ? userAddressResult : (userAddressResult?.address || "");
+        if (!userAddress) {
+          throw new Error("Freighter wallet is not connected.");
+        }
       }
 
       const rpcServer = new StellarSdk.rpc.Server(rpcUrl);
@@ -132,20 +145,27 @@ export default function InteractPanel({
       // Simulate and prepare resource limits
       tx = await rpcServer.prepareTransaction(tx);
 
-      addLog(`Requesting Freighter wallet signature to call "${funcName}"...`, "info");
-      const { signTransaction } = await import("@stellar/freighter-api");
-      const signed = await signTransaction(tx.toXDR(), {
-        networkPassphrase: StellarSdk.Networks.TESTNET,
-      });
+      let signedTx;
+      if (walletType === "playground") {
+        addLog(`Auto-signing invocation using in-browser Playground Wallet...`, "info");
+        tx.sign(StellarSdk.Keypair.fromSecret(playgroundSecret));
+        signedTx = tx;
+      } else {
+        addLog(`Requesting Freighter wallet signature to call "${funcName}"...`, "info");
+        const { signTransaction } = await import("@stellar/freighter-api");
+        const signed = await signTransaction(tx.toXDR(), {
+          networkPassphrase: StellarSdk.Networks.TESTNET,
+        });
 
-      if (!signed || !signed.signedTxXdr) {
-        throw new Error("Transaction signature rejected by Freighter");
+        if (!signed || !signed.signedTxXdr) {
+          throw new Error("Transaction signature rejected by Freighter");
+        }
+
+        signedTx = StellarSdk.TransactionBuilder.fromXDR(
+          signed.signedTxXdr,
+          StellarSdk.Networks.TESTNET
+        );
       }
-
-      const signedTx = StellarSdk.TransactionBuilder.fromXDR(
-        signed.signedTxXdr,
-        StellarSdk.Networks.TESTNET
-      );
 
       addLog(`Submitting transaction to Stellar ledger...`, "info");
       const sendResponse = await rpcServer.sendTransaction(signedTx);

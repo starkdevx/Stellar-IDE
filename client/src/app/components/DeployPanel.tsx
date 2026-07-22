@@ -3,7 +3,15 @@
 import React, { useState, useEffect } from "react";
 import * as StellarSdk from "@stellar/stellar-sdk";
 import { isConnected, requestAccess, getAddress } from "@stellar/freighter-api";
-import { Wallet, Coins, Rocket, ShieldCheck, AlertCircle } from "lucide-react";
+import { Wallet, Coins, Rocket, ShieldCheck, AlertCircle, Cpu } from "lucide-react";
+import { 
+  getActiveWalletType, 
+  setActiveWalletType, 
+  getOrCreatePlaygroundSecret, 
+  getPublicKeyFromSecret, 
+  WalletType 
+} from "../utils/wallet";
+import WalletModal from "./WalletModal";
 
 interface DeployPanelProps {
   wasmBase64: string | null;
@@ -18,25 +26,41 @@ export default function DeployPanel({
   addLog,
   projectName = "hello-world",
 }: DeployPanelProps) {
+  const [walletType, setWalletType] = useState<WalletType>("playground");
+  const [playgroundSecret, setPlaygroundSecret] = useState<string>("");
   const [walletConnected, setWalletConnected] = useState(false);
   const [address, setAddress] = useState<string>("");
   const [balance, setBalance] = useState<string>("0");
-  const [network, setNetwork] = useState<string>("TESTNET");
   const [funding, setFunding] = useState(false);
   const [deploying, setDeploying] = useState(false);
   const [deployStep, setDeployStep] = useState<string>("");
+  
+  // Wallet modal control state
+  const [isModalOpen, setIsModalOpen] = useState(false);
 
   const rpcUrl = "https://soroban-testnet.stellar.org";
   const horizonUrl = "https://horizon-testnet.stellar.org";
 
-  // Check connection status
-  useEffect(() => {
-    const checkConnection = async () => {
+  // Initialize and check connection status
+  const initWallet = async () => {
+    const activeType = getActiveWalletType();
+    setWalletType(activeType);
+
+    if (activeType === "playground") {
+      const secret = getOrCreatePlaygroundSecret();
+      setPlaygroundSecret(secret);
+      const pubKey = getPublicKeyFromSecret(secret);
+      if (pubKey) {
+        setAddress(pubKey);
+        setWalletConnected(true);
+        fetchBalance(pubKey);
+      }
+    } else {
+      // Freighter check
       try {
         const connected = await isConnected();
         const isCon = typeof connected === "boolean" ? connected : (connected && (connected as any).isConnected);
         if (isCon) {
-          // Check if already allowed
           const userAddress = await getAddress();
           if (userAddress) {
             const addrStr = typeof userAddress === "string" ? userAddress : (userAddress.address || "");
@@ -48,13 +72,27 @@ export default function DeployPanel({
           }
         }
       } catch (err) {
-        console.error("Wallet connection check failed:", err);
+        console.error("Freighter wallet check failed:", err);
       }
+    }
+  };
+
+  useEffect(() => {
+    initWallet();
+
+    // Listen to wallet change events from other panels (e.g. InteractPanel)
+    const handleWalletChange = () => {
+      initWallet();
     };
-    checkConnection();
+
+    window.addEventListener("stellar_wallet_change", handleWalletChange);
+    return () => {
+      window.removeEventListener("stellar_wallet_change", handleWalletChange);
+    };
   }, []);
 
   const fetchBalance = async (userAddress: string) => {
+    if (!userAddress) return;
     try {
       const horizonServer = new StellarSdk.Horizon.Server(horizonUrl);
       const accountDetails = await horizonServer.loadAccount(userAddress);
@@ -66,7 +104,30 @@ export default function DeployPanel({
     }
   };
 
-  const handleConnectWallet = async () => {
+  const handleConfirmSelection = (type: WalletType) => {
+    setActiveWalletType(type);
+    setWalletType(type);
+    setWalletConnected(false);
+    setAddress("");
+    setBalance("0");
+
+    if (type === "playground") {
+      const secret = getOrCreatePlaygroundSecret();
+      setPlaygroundSecret(secret);
+      const pubKey = getPublicKeyFromSecret(secret);
+      if (pubKey) {
+        setAddress(pubKey);
+        setWalletConnected(true);
+        addLog(`Connected In-Browser Playground Wallet: ${pubKey}`, "success");
+        fetchBalance(pubKey);
+      }
+    } else {
+      handleConnectFreighter();
+    }
+    setIsModalOpen(false);
+  };
+
+  const handleConnectFreighter = async () => {
     try {
       const hasFreighter = await isConnected();
       const isCon = typeof hasFreighter === "boolean" ? hasFreighter : (hasFreighter && (hasFreighter as any).isConnected);
@@ -160,20 +221,27 @@ export default function DeployPanel({
       // Simulate and prepare resource parameters
       uploadTx = await rpcServer.prepareTransaction(uploadTx);
 
-      addLog("Requesting signature from Freighter wallet to upload WASM...", "info");
-      const { signTransaction } = await import("@stellar/freighter-api");
-      const uploadSigned = await signTransaction(uploadTx.toXDR(), {
-        networkPassphrase: StellarSdk.Networks.TESTNET,
-      });
+      let uploadSignedTx;
+      if (walletType === "playground") {
+        addLog("Auto-signing WASM upload using in-browser Playground Wallet...", "info");
+        uploadTx.sign(StellarSdk.Keypair.fromSecret(playgroundSecret));
+        uploadSignedTx = uploadTx;
+      } else {
+        addLog("Requesting signature from Freighter wallet to upload WASM...", "info");
+        const { signTransaction } = await import("@stellar/freighter-api");
+        const uploadSigned = await signTransaction(uploadTx.toXDR(), {
+          networkPassphrase: StellarSdk.Networks.TESTNET,
+        });
 
-      if (!uploadSigned || !uploadSigned.signedTxXdr) {
-        throw new Error("Transaction signature rejected by Freighter");
+        if (!uploadSigned || !uploadSigned.signedTxXdr) {
+          throw new Error("Transaction signature rejected by Freighter");
+        }
+
+        uploadSignedTx = StellarSdk.TransactionBuilder.fromXDR(
+          uploadSigned.signedTxXdr,
+          StellarSdk.Networks.TESTNET
+        );
       }
-
-      const uploadSignedTx = StellarSdk.TransactionBuilder.fromXDR(
-        uploadSigned.signedTxXdr,
-        StellarSdk.Networks.TESTNET
-      );
 
       addLog("Submitting WASM upload transaction to Stellar ledger...", "info");
       const uploadSendResponse = await rpcServer.sendTransaction(uploadSignedTx);
@@ -226,19 +294,27 @@ export default function DeployPanel({
 
       createTx = await rpcServer.prepareTransaction(createTx);
 
-      addLog("Requesting signature from Freighter wallet to create contract...", "info");
-      const createSigned = await signTransaction(createTx.toXDR(), {
-        networkPassphrase: StellarSdk.Networks.TESTNET,
-      });
+      let createSignedTx;
+      if (walletType === "playground") {
+        addLog("Auto-signing instantiation transaction using in-browser Playground Wallet...", "info");
+        createTx.sign(StellarSdk.Keypair.fromSecret(playgroundSecret));
+        createSignedTx = createTx;
+      } else {
+        addLog("Requesting signature from Freighter wallet to create contract...", "info");
+        const { signTransaction } = await import("@stellar/freighter-api");
+        const createSigned = await signTransaction(createTx.toXDR(), {
+          networkPassphrase: StellarSdk.Networks.TESTNET,
+        });
 
-      if (!createSigned || !createSigned.signedTxXdr) {
-        throw new Error("Contract creation signature rejected by Freighter");
+        if (!createSigned || !createSigned.signedTxXdr) {
+          throw new Error("Contract creation signature rejected by Freighter");
+        }
+
+        createSignedTx = StellarSdk.TransactionBuilder.fromXDR(
+          createSigned.signedTxXdr,
+          StellarSdk.Networks.TESTNET
+        );
       }
-
-      const createSignedTx = StellarSdk.TransactionBuilder.fromXDR(
-        createSigned.signedTxXdr,
-        StellarSdk.Networks.TESTNET
-      );
 
       addLog("Submitting contract instantiation transaction...", "info");
       const createSendResponse = await rpcServer.sendTransaction(createSignedTx);
@@ -285,36 +361,59 @@ export default function DeployPanel({
         <span>Deploy Contract</span>
       </div>
 
-      {/* Connection State */}
-      {!walletConnected ? (
-        <button className="btn btn-primary" onClick={handleConnectWallet} style={{ width: "100%" }}>
-          <Wallet size={16} />
-          <span>Connect Freighter Wallet</span>
-        </button>
-      ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-          {/* Connected state header */}
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <span className="status-badge connected">
-              <span className="status-indicator"></span>
-              Connected
-            </span>
-            <span style={{ fontSize: "0.75rem", fontFamily: "var(--font-mono)", color: "hsl(var(--text-secondary))" }}>
-              {address.slice(0, 6)}...{address.slice(-6)}
+      {/* Connected Wallet Info Card */}
+      <div style={{ background: "rgba(255, 255, 255, 0.02)", border: "1px solid rgba(255, 255, 255, 0.05)", borderRadius: "8px", padding: "12px", display: "flex", flexDirection: "column", gap: "10px" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+            {walletType === "playground" ? (
+              <Cpu size={14} style={{ color: "hsl(var(--accent-violet))" }} />
+            ) : (
+              <Wallet size={14} style={{ color: "hsl(var(--accent-violet))" }} />
+            )}
+            <span style={{ fontSize: "0.78rem", fontWeight: "600", color: "#ffffff" }}>
+              {walletType === "playground" ? "Playground Wallet" : "Freighter Wallet"}
             </span>
           </div>
+          <button 
+            onClick={() => setIsModalOpen(true)}
+            style={{ background: "rgba(255, 255, 255, 0.06)", border: "1px solid rgba(255, 255, 255, 0.1)", borderRadius: "4px", padding: "4px 8px", fontSize: "0.68rem", fontWeight: "600", color: "#ffffff", cursor: "pointer", transition: "background 0.2s" }}
+            onMouseOver={(e) => e.currentTarget.style.background = "rgba(255, 255, 255, 0.1)"}
+            onMouseOut={(e) => e.currentTarget.style.background = "rgba(255, 255, 255, 0.06)"}
+          >
+            Change
+          </button>
+        </div>
 
-          {/* Account Balance */}
-          <div style={{ background: "rgba(255, 255, 255, 0.02)", padding: "10px", borderRadius: "6px", border: "1px solid rgba(255, 255, 255, 0.05)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "0.8rem" }}>
-              <Coins size={14} style={{ color: "hsl(var(--accent-cyan))" }} />
-              <span>Balance:</span>
+        {walletConnected ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <span style={{ fontSize: "0.7rem", color: "hsl(var(--text-secondary))" }}>Address:</span>
+              <span style={{ fontSize: "0.72rem", fontFamily: "var(--font-mono)", color: "#ffffff" }}>
+                {address ? `${address.slice(0, 8)}...${address.slice(-8)}` : ""}
+              </span>
             </div>
-            <span style={{ fontSize: "0.85rem", fontWeight: "700", fontFamily: "var(--font-mono)" }}>
-              {balance} XLM
-            </span>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <span style={{ fontSize: "0.7rem", color: "hsl(var(--text-secondary))" }}>Balance:</span>
+              <span style={{ fontSize: "0.78rem", fontFamily: "var(--font-mono)", fontWeight: "700", color: "hsl(var(--accent-cyan))" }}>
+                {balance} XLM
+              </span>
+            </div>
           </div>
+        ) : (
+          <div style={{ display: "flex", justifyContent: "center", alignItems: "center", padding: "4px 0" }}>
+            <button 
+              onClick={() => setIsModalOpen(true)} 
+              className="btn btn-primary" 
+              style={{ width: "100%", fontSize: "0.75rem", justifyContent: "center" }}
+            >
+              Connect Wallet
+            </button>
+          </div>
+        )}
+      </div>
 
+      {walletConnected && (
+        <div style={{ display: "flex", flexDirection: "column", gap: "10px", marginTop: "4px" }}>
           {/* Faucet Action */}
           <button
             className="btn btn-secondary"
@@ -333,7 +432,7 @@ export default function DeployPanel({
           </button>
 
           {/* Deploy Action */}
-          <div style={{ borderTop: "1px solid rgba(255, 255, 255, 0.05)", marginTop: "8px", paddingTop: "12px" }}>
+          <div style={{ borderTop: "1px solid rgba(255, 255, 255, 0.05)", marginTop: "4px", paddingTop: "8px" }}>
             <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
               {!wasmBase64 ? (
                 <div style={{ display: "flex", alignItems: "center", gap: "8px", padding: "8px", background: "rgba(239, 68, 68, 0.05)", border: "1px solid rgba(239, 68, 68, 0.15)", borderRadius: "6px", color: "hsl(var(--accent-error))", fontSize: "0.7rem" }}>
@@ -369,6 +468,25 @@ export default function DeployPanel({
           </div>
         </div>
       )}
+
+      {/* Wallet Selector Centered Modal Component */}
+      <WalletModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        activeWalletType={walletType}
+        playgroundSecret={playgroundSecret}
+        onWalletUpdated={(newSecret) => {
+          setPlaygroundSecret(newSecret);
+          const pubKey = getPublicKeyFromSecret(newSecret);
+          if (pubKey) {
+            setAddress(pubKey);
+            setWalletConnected(true);
+            fetchBalance(pubKey);
+          }
+        }}
+        onConfirmSelection={handleConfirmSelection}
+        handleConnectFreighter={handleConnectFreighter}
+      />
     </div>
   );
 }
