@@ -43,6 +43,12 @@ export default function DeployPanel({
 
   // Initialize and check connection status
   const initWallet = async () => {
+    const isConnectedSaved = localStorage.getItem("stellar_ide_wallet_connected") === "true";
+    if (!isConnectedSaved) {
+      setWalletConnected(false);
+      return;
+    }
+
     const activeType = getActiveWalletType();
     setWalletType(activeType);
 
@@ -105,6 +111,7 @@ export default function DeployPanel({
   };
 
   const handleConfirmSelection = (type: WalletType) => {
+    localStorage.setItem("stellar_ide_wallet_connected", "true");
     setActiveWalletType(type);
     setWalletType(type);
     setWalletConnected(false);
@@ -144,6 +151,7 @@ export default function DeployPanel({
       
       const addrStr = typeof accessRes === "string" ? accessRes : (accessRes && (accessRes as any).address);
       if (addrStr) {
+        localStorage.setItem("stellar_ide_wallet_connected", "true");
         setAddress(addrStr);
         setWalletConnected(true);
         addLog(`Connected Freighter Wallet: ${addrStr}`, "success");
@@ -155,6 +163,14 @@ export default function DeployPanel({
       console.error(err);
       addLog(`Wallet connection failed: ${err.message}`, "error");
     }
+  };
+
+  const handleDisconnect = () => {
+    localStorage.removeItem("stellar_ide_wallet_connected");
+    setWalletConnected(false);
+    setAddress("");
+    setBalance("0");
+    addLog("Wallet disconnected.", "info");
   };
 
   const handleFundAccount = async () => {
@@ -361,59 +377,67 @@ export default function DeployPanel({
         <span>Deploy Contract</span>
       </div>
 
-      {/* Connected Wallet Info Card */}
-      <div style={{ background: "rgba(255, 255, 255, 0.02)", border: "1px solid rgba(255, 255, 255, 0.05)", borderRadius: "8px", padding: "12px", display: "flex", flexDirection: "column", gap: "10px" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-            {walletType === "playground" ? (
-              <Cpu size={14} style={{ color: "hsl(var(--accent-violet))" }} />
-            ) : (
-              <Wallet size={14} style={{ color: "hsl(var(--accent-violet))" }} />
-            )}
-            <span style={{ fontSize: "0.78rem", fontWeight: "600", color: "#ffffff" }}>
-              {walletType === "playground" ? "Playground Wallet" : "Freighter Wallet"}
-            </span>
-          </div>
-          <button 
-            onClick={() => setIsModalOpen(true)}
-            style={{ background: "rgba(255, 255, 255, 0.06)", border: "1px solid rgba(255, 255, 255, 0.1)", borderRadius: "4px", padding: "4px 8px", fontSize: "0.68rem", fontWeight: "600", color: "#ffffff", cursor: "pointer", transition: "background 0.2s" }}
-            onMouseOver={(e) => e.currentTarget.style.background = "rgba(255, 255, 255, 0.1)"}
-            onMouseOut={(e) => e.currentTarget.style.background = "rgba(255, 255, 255, 0.06)"}
-          >
-            Change
-          </button>
-        </div>
-
-        {walletConnected ? (
-          <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+      {/* Connection State */}
+      {!walletConnected ? (
+        <button 
+          onClick={() => setIsModalOpen(true)} 
+          className="btn btn-primary" 
+          style={{ width: "100%", justifyContent: "center", gap: "8px", padding: "10px 12px" }}
+        >
+          <Wallet size={16} />
+          <span>Connect Wallet</span>
+        </button>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+          {/* Connected Wallet Info Card */}
+          <div style={{ background: "rgba(255, 255, 255, 0.02)", border: "1px solid rgba(255, 255, 255, 0.05)", borderRadius: "8px", padding: "12px", display: "flex", flexDirection: "column", gap: "10px" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <span style={{ fontSize: "0.7rem", color: "hsl(var(--text-secondary))" }}>Address:</span>
-              <span style={{ fontSize: "0.72rem", fontFamily: "var(--font-mono)", color: "#ffffff" }}>
-                {address ? `${address.slice(0, 8)}...${address.slice(-8)}` : ""}
-              </span>
+              <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                {walletType === "playground" ? (
+                  <Cpu size={14} style={{ color: "hsl(var(--accent-violet))" }} />
+                ) : (
+                  <Wallet size={14} style={{ color: "hsl(var(--accent-violet))" }} />
+                )}
+                <span style={{ fontSize: "0.78rem", fontWeight: "600", color: "#ffffff" }}>
+                  {walletType === "playground" ? "Playground Wallet" : "Freighter Wallet"}
+                </span>
+              </div>
+              <div style={{ display: "flex", gap: "4px" }}>
+                <button 
+                  onClick={() => setIsModalOpen(true)}
+                  style={{ background: "rgba(255, 255, 255, 0.06)", border: "1px solid rgba(255, 255, 255, 0.1)", borderRadius: "4px", padding: "4px 8px", fontSize: "0.68rem", fontWeight: "600", color: "#ffffff", cursor: "pointer", transition: "background 0.2s" }}
+                  onMouseOver={(e) => e.currentTarget.style.background = "rgba(255, 255, 255, 0.1)"}
+                  onMouseOut={(e) => e.currentTarget.style.background = "rgba(255, 255, 255, 0.06)"}
+                >
+                  Change
+                </button>
+                <button 
+                  onClick={handleDisconnect}
+                  style={{ background: "rgba(239, 68, 68, 0.08)", border: "1px solid rgba(239, 68, 68, 0.15)", borderRadius: "4px", padding: "4px 8px", fontSize: "0.68rem", fontWeight: "600", color: "hsl(var(--accent-error))", cursor: "pointer", transition: "background 0.2s" }}
+                  onMouseOver={(e) => e.currentTarget.style.background = "rgba(239, 68, 68, 0.15)"}
+                  onMouseOut={(e) => e.currentTarget.style.background = "rgba(239, 68, 68, 0.08)"}
+                >
+                  Disconnect
+                </button>
+              </div>
             </div>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <span style={{ fontSize: "0.7rem", color: "hsl(var(--text-secondary))" }}>Balance:</span>
-              <span style={{ fontSize: "0.78rem", fontFamily: "var(--font-mono)", fontWeight: "700", color: "hsl(var(--accent-cyan))" }}>
-                {balance} XLM
-              </span>
-            </div>
-          </div>
-        ) : (
-          <div style={{ display: "flex", justifyContent: "center", alignItems: "center", padding: "4px 0" }}>
-            <button 
-              onClick={() => setIsModalOpen(true)} 
-              className="btn btn-primary" 
-              style={{ width: "100%", fontSize: "0.75rem", justifyContent: "center" }}
-            >
-              Connect Wallet
-            </button>
-          </div>
-        )}
-      </div>
 
-      {walletConnected && (
-        <div style={{ display: "flex", flexDirection: "column", gap: "10px", marginTop: "4px" }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span style={{ fontSize: "0.7rem", color: "hsl(var(--text-secondary))" }}>Address:</span>
+                <span style={{ fontSize: "0.72rem", fontFamily: "var(--font-mono)", color: "#ffffff" }}>
+                  {address ? `${address.slice(0, 8)}...${address.slice(-8)}` : ""}
+                </span>
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span style={{ fontSize: "0.7rem", color: "hsl(var(--text-secondary))" }}>Balance:</span>
+                <span style={{ fontSize: "0.78rem", fontFamily: "var(--font-mono)", fontWeight: "700", color: "hsl(var(--accent-cyan))" }}>
+                  {balance} XLM
+                </span>
+              </div>
+            </div>
+          </div>
+
           {/* Faucet Action */}
           <button
             className="btn btn-secondary"
