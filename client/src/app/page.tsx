@@ -718,34 +718,19 @@ export default function Home() {
               <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                 <button
                   onClick={clearLogs}
-                  style={{
-                    background: "transparent",
-                    border: "none",
-                    color: "hsl(var(--text-muted))",
-                    cursor: "pointer",
-                    fontSize: "0.7rem",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "4px"
-                  }}
+                  className="console-action-btn"
+                  title="Clear execution logs"
                 >
-                  <X size={10} /> Clear Logs
+                  <X size={12} /> Clear Logs
                 </button>
                 <div style={{ width: "1px", height: "12px", background: "rgba(255, 255, 255, 0.15)" }}></div>
                 <button
                   onClick={() => setIsConsoleMinimized(!isConsoleMinimized)}
-                  style={{
-                    background: "transparent",
-                    border: "none",
-                    color: "hsl(var(--text-muted))",
-                    cursor: "pointer",
-                    display: "flex",
-                    alignItems: "center",
-                    padding: "2px"
-                  }}
-                  title={isConsoleMinimized ? "Maximize Console" : "Minimize Console"}
+                  className="console-action-btn"
+                  title={isConsoleMinimized ? "Expand Console" : "Minimize Console"}
                 >
                   {isConsoleMinimized ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                  <span>{isConsoleMinimized ? "Expand" : "Minimize"}</span>
                 </button>
               </div>
             </div>

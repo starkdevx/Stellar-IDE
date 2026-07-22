@@ -12,8 +12,8 @@
   --border-color: 223 20% 18%;
 
   --text-primary: 0 0% 95%;
-  --text-secondary: 220 15% 70%;
-  --text-muted: 220 10% 45%;
+  --text-secondary: 220 15% 82%;
+  --text-muted: 220 15% 68%;
 
   /* Accents */
   --accent-indigo: 263 70% 50%;
@@ -155,7 +155,7 @@ html, body {
 .sidebar-toggle-btn {
   background: transparent;
   border: none;
-  color: hsl(var(--text-muted));
+  color: #cbd5e1;
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -167,30 +167,28 @@ html, body {
 }
 
 .sidebar-toggle-btn:hover {
-  background: rgba(255, 255, 255, 0.08);
-  color: hsl(var(--text-primary));
+  background: rgba(255, 255, 255, 0.1);
+  color: #ffffff;
 }
 
 .sidebar-expand-floating-btn {
   background: rgba(13, 16, 28, 0.9);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  color: hsl(var(--text-muted));
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #cbd5e1;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 6px 10px;
+  padding: 6px;
   border-radius: 6px;
   transition: all 0.15s ease;
-  height: 36px;
   margin-right: 6px;
-  flex-shrink: 0;
 }
 
 .sidebar-expand-floating-btn:hover {
-  background: rgba(139, 92, 246, 0.15);
-  color: hsl(var(--accent-violet));
-  border-color: rgba(139, 92, 246, 0.3);
+  background: rgba(139, 92, 246, 0.2);
+  color: #ffffff;
+  border-color: hsl(var(--accent-violet));
 }
 
 .sidebar-tabs {
@@ -419,12 +417,32 @@ html, body {
   align-items: center;
   justify-content: space-between;
   padding: 0 16px;
-  background: rgba(10, 12, 22, 0.7);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  background: rgba(10, 12, 22, 0.75);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   font-size: 0.75rem;
   font-weight: 600;
   letter-spacing: 0.5px;
-  color: hsl(var(--text-secondary));
+  color: #cbd5e1;
+}
+
+.console-action-btn {
+  background: transparent;
+  border: none;
+  color: #cbd5e1;
+  cursor: pointer;
+  font-size: 0.72rem;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 6px;
+  border-radius: 4px;
+  transition: all 0.15s ease;
+}
+
+.console-action-btn:hover {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.1);
 }
 
 .console-body {
@@ -586,14 +604,17 @@ html, body {
 .file-btn {
   background: transparent;
   border: none;
-  color: hsl(var(--text-muted));
+  color: #cbd5e1;
   cursor: pointer;
   font-size: 0.8rem;
-  padding: 2px;
+  padding: 3px;
+  border-radius: 4px;
+  transition: all 0.15s ease;
 }
 
 .file-btn:hover {
-  color: hsl(var(--accent-error));
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.12);
 }
 
 /* Wallet and deployment states */
@@ -789,7 +810,7 @@ html, body {
 .project-action-icon-btn {
   background: transparent;
   border: 1px solid transparent;
-  color: hsl(var(--text-muted));
+  color: #cbd5e1;
   border-radius: 4px;
   padding: 5px;
   display: flex;
@@ -800,9 +821,9 @@ html, body {
 }
 
 .project-action-icon-btn:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.06);
-  color: hsl(var(--text-primary));
-  border-color: rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+  border-color: rgba(255, 255, 255, 0.15);
 }
 
 .project-action-icon-btn.disabled,
