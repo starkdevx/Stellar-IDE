@@ -267,6 +267,9 @@ export default function DeployPanel({
       onDeploySuccess(contractId);
       await fetchBalance(address);
 
+      // Record deploy activity securely
+      fetch("/api/activity/deploy", { method: "POST" }).catch(() => {});
+
     } catch (err: any) {
       console.error(err);
       addLog(`Deployment failed: ${err.message}`, "error");

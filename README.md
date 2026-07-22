@@ -58,9 +58,10 @@ A powerful, modern, web-based Integrated Development Environment (IDE) built for
 ### Prerequisites
 
 Ensure you have the following installed on your machine:
-- **Node.js** (v18 or higher) & **npm**
-- **Rust toolchain** with `wasm32v1-none` target:
+- **Node.js** (v22 LTS or higher) & **npm**
+- **Rust toolchain** (Latest stable) with `wasm32v1-none` target:
   ```bash
+  rustup update
   rustup target add wasm32v1-none
   ```
 
@@ -118,6 +119,61 @@ Stellar-IDE/
 │
 └── README.md
 ```
+
+---
+
+## 🌐 Production Deployment (Vercel + AWS)
+
+### ☁️ 1. Backend Deployment (AWS EC2 / App Runner)
+The backend compiler requires a full Linux environment with `rustup` and `cargo` installed. **AWS EC2** (or AWS App Runner / ECS with Docker) is recommended.
+
+#### A. Launch an AWS EC2 Instance:
+- Select **Ubuntu 22.04 LTS** (instance type `t3.small` or `t3.medium`).
+- Configure Security Group:
+  - Allow **HTTP (Port 80)** & **Custom TCP (Port 5000)** from `0.0.0.0/0`.
+  - Allow **SSH (Port 22)**.
+
+#### B. SSH into EC2 and Install Dependencies:
+```bash
+# Update Ubuntu packages
+sudo apt update && sudo apt upgrade -y
+
+# Install Node.js 22 LTS (Latest LTS) & compilation tools
+curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
+sudo apt install -y nodejs git build-essential pkg-config libssl-dev
+
+# Install latest Rust stable release & WebAssembly target
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+source $HOME/.cargo/env
+rustup update
+rustup target add wasm32v1-none
+```
+
+#### C. Clone & Run Backend Compiler:
+```bash
+git clone https://github.com/starkdevx/Stellar-IDE.git
+cd Stellar-IDE/server
+npm install
+npm run build
+
+# Run background process using PM2
+sudo npm install -g pm2
+pm2 start dist/index.js --name "stellar-compiler"
+pm2 save
+pm2 startup
+```
+*Your backend is now live at `http://<YOUR_AWS_EC2_PUBLIC_IP>:5000`.*
+
+---
+
+### 📐 2. Frontend Deployment (Vercel)
+
+1. **Import Repository**: Log in to [Vercel](https://vercel.com) and click **Add New Project**. Import your GitHub repository (`Stellar-IDE`).
+2. **Set Root Directory**: Select `client` as the root directory.
+3. **Configure Environment Variables**:
+   Add the following Environment Variable in Vercel settings:
+   - `NEXT_PUBLIC_COMPILER_URL` = `http://<YOUR_AWS_EC2_PUBLIC_IP>:5000` (or your SSL domain)
+4. **Deploy**: Click **Deploy**. Vercel will build and host your Next.js application automatically!
 
 ---
 

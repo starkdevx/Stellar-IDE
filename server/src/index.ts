@@ -54,6 +54,20 @@ app.post('/api/activity/session', (req: express.Request, res: express.Response) 
   res.json({ success: true });
 });
 
+// Deploy activity tracking endpoint
+app.post('/api/activity/deploy', (req: express.Request, res: express.Response) => {
+  const clientIp = (req.headers['x-forwarded-for'] as string || req.socket.remoteAddress || '').split(',')[0].trim();
+  statsTracker.recordDeploy(clientIp);
+  res.json({ success: true });
+});
+
+// Interaction activity tracking endpoint
+app.post('/api/activity/interact', (req: express.Request, res: express.Response) => {
+  const clientIp = (req.headers['x-forwarded-for'] as string || req.socket.remoteAddress || '').split(',')[0].trim();
+  statsTracker.recordInteraction(clientIp);
+  res.json({ success: true });
+});
+
 // Admin stats endpoint
 app.get('/api/admin/stats', (req: express.Request, res: express.Response) => {
   res.json(statsTracker.getStats());

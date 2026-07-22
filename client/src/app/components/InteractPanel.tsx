@@ -174,6 +174,9 @@ export default function InteractPanel({
       addLog(`Method "${funcName}" returned: ${outputString}`, "success");
       setOutputs((prev) => ({ ...prev, [funcName]: outputString }));
 
+      // Record interaction activity securely
+      fetch("/api/activity/interact", { method: "POST" }).catch(() => {});
+
     } catch (err: any) {
       console.error(err);
       addLog(`Invocation failed: ${err.message}`, "error");
