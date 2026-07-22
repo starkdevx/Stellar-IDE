@@ -4,6 +4,7 @@ import { exec } from 'child_process';
 import path from 'path';
 import fs from 'fs';
 import { compileQueue } from './compileQueue';
+import { statsTracker } from './statsTracker';
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -46,9 +47,22 @@ app.get('/api/queue/stats', (req: express.Request, res: express.Response) => {
   res.json(compileQueue.getStats());
 });
 
+// Session activity tracking endpoint
+app.post('/api/activity/session', (req: express.Request, res: express.Response) => {
+  const clientIp = (req.headers['x-forwarded-for'] as string || req.socket.remoteAddress || '').split(',')[0].trim();
+  statsTracker.recordVisit(clientIp);
+  res.json({ success: true });
+});
+
+// Admin stats endpoint
+app.get('/api/admin/stats', (req: express.Request, res: express.Response) => {
+  res.json(statsTracker.getStats());
+});
+
 // Compile endpoint
 app.post('/api/compile', async (req: express.Request, res: express.Response) => {
   const { files, projectName = "hello-world" } = req.body;
+  const clientIp = (req.headers['x-forwarded-for'] as string || req.socket.remoteAddress || '').split(',')[0].trim();
 
   if (!files || typeof files !== 'object') {
     return res.status(400).json({ error: 'Invalid payload: "files" object is required' });
@@ -106,6 +120,7 @@ app.post('/api/compile', async (req: express.Request, res: express.Response) => 
                 logs,
                 error: 'WASM output file not found after successful compilation.'
               });
+              statsTracker.recordCompilation(clientIp, false);
               return finishTask();
             }
 
@@ -129,6 +144,7 @@ app.post('/api/compile', async (req: express.Request, res: express.Response) => 
                 abi,
                 wasm: wasmBase64
               });
+              statsTracker.recordCompilation(clientIp, true);
               finishTask();
             });
           };
@@ -144,6 +160,7 @@ app.post('/api/compile', async (req: express.Request, res: express.Response) => 
                   logs: sanitizeLogs(logs),
                   error: `Compilation failed: ${fallbackErr.message}`
                 });
+                statsTracker.recordCompilation(clientIp, false);
                 return finishTask();
               }
               proceedWithWasm();

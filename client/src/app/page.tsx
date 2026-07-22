@@ -159,6 +159,9 @@ export default function Home() {
     setActiveProjectId(initialActiveId);
     setMounted(true);
 
+    // Record session activity securely on mount
+    fetch("/api/activity/session", { method: "POST" }).catch(() => {});
+
     const now = new Date().toLocaleTimeString();
     setLogs([
       {
