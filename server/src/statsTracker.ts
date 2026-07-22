@@ -8,6 +8,8 @@ interface UserStats {
     success: number;
     failed: number;
   };
+  deploys: number;
+  interactions: number;
   firstSeen: string;
   lastActive: string;
 }
@@ -19,6 +21,8 @@ interface StatsSchema {
     successfulCompilations: number;
     failedCompilations: number;
     totalVisits: number;
+    totalDeploys: number;
+    totalInteractions: number;
     uniqueUsers: number;
   };
   users: Record<string, UserStats>;
@@ -35,6 +39,8 @@ class StatsTracker {
       successfulCompilations: 0,
       failedCompilations: 0,
       totalVisits: 0,
+      totalDeploys: 0,
+      totalInteractions: 0,
       uniqueUsers: 0
     },
     users: {}
@@ -51,6 +57,13 @@ class StatsTracker {
         const parsed = JSON.parse(fileContent);
         if (parsed.salt) {
           this.stats = parsed;
+          // Apply schema migrations for new tracking parameters
+          if (this.stats.summary.totalDeploys === undefined) this.stats.summary.totalDeploys = 0;
+          if (this.stats.summary.totalInteractions === undefined) this.stats.summary.totalInteractions = 0;
+          for (const key of Object.keys(this.stats.users)) {
+            if (this.stats.users[key].deploys === undefined) this.stats.users[key].deploys = 0;
+            if (this.stats.users[key].interactions === undefined) this.stats.users[key].interactions = 0;
+          }
           return;
         }
       }
@@ -108,6 +121,8 @@ class StatsTracker {
       this.stats.users[hashed] = {
         visits: 1,
         compilations: { success: 0, failed: 0 },
+        deploys: 0,
+        interactions: 0,
         firstSeen: now,
         lastActive: now
       };
@@ -139,6 +154,8 @@ class StatsTracker {
       this.stats.users[hashed] = {
         visits: 1,
         compilations: { success: success ? 1 : 0, failed: success ? 0 : 1 },
+        deploys: 0,
+        interactions: 0,
         firstSeen: now,
         lastActive: now
       };
@@ -153,6 +170,62 @@ class StatsTracker {
     }
 
     console.log(`[STATS] Compile recorded. Success: ${success} | Total Compiles: ${this.stats.summary.totalCompilations}`);
+    this.saveStatsAsync();
+  }
+
+  /**
+   * Records a Freighter contract deployment event
+   */
+  public recordDeploy(ip: string) {
+    const hashed = this.getHash(ip);
+    const now = new Date().toISOString();
+
+    this.stats.summary.totalDeploys += 1;
+
+    if (!this.stats.users[hashed]) {
+      this.stats.users[hashed] = {
+        visits: 1,
+        compilations: { success: 0, failed: 0 },
+        deploys: 1,
+        interactions: 0,
+        firstSeen: now,
+        lastActive: now
+      };
+      this.stats.summary.uniqueUsers = Object.keys(this.stats.users).length;
+    } else {
+      this.stats.users[hashed].deploys += 1;
+      this.stats.users[hashed].lastActive = now;
+    }
+
+    console.log(`[STATS] Deploy recorded. Total Deploys: ${this.stats.summary.totalDeploys}`);
+    this.saveStatsAsync();
+  }
+
+  /**
+   * Records a contract function interaction invocation event
+   */
+  public recordInteraction(ip: string) {
+    const hashed = this.getHash(ip);
+    const now = new Date().toISOString();
+
+    this.stats.summary.totalInteractions += 1;
+
+    if (!this.stats.users[hashed]) {
+      this.stats.users[hashed] = {
+        visits: 1,
+        compilations: { success: 0, failed: 0 },
+        deploys: 0,
+        interactions: 1,
+        firstSeen: now,
+        lastActive: now
+      };
+      this.stats.summary.uniqueUsers = Object.keys(this.stats.users).length;
+    } else {
+      this.stats.users[hashed].interactions += 1;
+      this.stats.users[hashed].lastActive = now;
+    }
+
+    console.log(`[STATS] Interaction recorded. Total Interactions: ${this.stats.summary.totalInteractions}`);
     this.saveStatsAsync();
   }
 
