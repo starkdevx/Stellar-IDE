@@ -170,9 +170,9 @@ export default function WalletDropdown({ onClose, addLog }: WalletDropdownProps)
       >
         <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
           {walletType === "playground" ? (
-            <Cpu size={14} style={{ color: "hsl(var(--accent-violet))" }} />
+            <Cpu size={14} style={{ color: "#c084fc" }} />
           ) : (
-            <Wallet size={14} style={{ color: "hsl(var(--accent-violet))" }} />
+            <Wallet size={14} style={{ color: "#c084fc" }} />
           )}
           <span style={{ fontSize: "0.78rem", fontWeight: "700", color: "#ffffff" }}>
             {walletType === "playground" ? "Playground Wallet" : "Freighter Wallet"}
@@ -218,7 +218,7 @@ export default function WalletDropdown({ onClose, addLog }: WalletDropdownProps)
               <button 
                 onClick={loadWalletDetails}
                 disabled={loading}
-                style={{ background: "transparent", border: "none", color: "hsl(var(--accent-violet))", cursor: "pointer", display: "flex", alignItems: "center", gap: "4px", fontSize: "0.68rem", fontWeight: "600" }}
+                style={{ background: "transparent", border: "none", color: "#c084fc", cursor: "pointer", display: "flex", alignItems: "center", gap: "4px", fontSize: "0.68rem", fontWeight: "600" }}
               >
                 <RefreshCw size={10} className={loading ? "spinner" : ""} />
                 <span>Refresh</span>
@@ -259,7 +259,9 @@ export default function WalletDropdown({ onClose, addLog }: WalletDropdownProps)
                         href={`https://stellar.expert/explorer/testnet/tx/${tx.hash}`}
                         target="_blank"
                         rel="noopener noreferrer"
-                        style={{ flex: 1.5, fontFamily: "var(--font-mono)", color: "hsl(var(--accent-violet))", textDecoration: "none", display: "flex", alignItems: "center", gap: "4px" }}
+                        style={{ flex: 1.5, fontFamily: "var(--font-mono)", color: "#c084fc", textDecoration: "none", display: "flex", alignItems: "center", gap: "4px" }}
+                        onMouseOver={(e) => e.currentTarget.style.textDecoration = "underline"}
+                        onMouseOut={(e) => e.currentTarget.style.textDecoration = "none"}
                       >
                         {tx.hash.slice(0, 6)}...{tx.hash.slice(-4)}
                         <ExternalLink size={8} />

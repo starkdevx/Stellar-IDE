@@ -724,25 +724,30 @@ export default function Home() {
                     style={{
                       display: "flex",
                       alignItems: "center",
-                      gap: "6px",
-                      background: "rgba(139, 92, 246, 0.08)",
-                      border: "1px solid rgba(139, 92, 246, 0.2)",
-                      borderRadius: "4px",
-                      padding: "4px 8px",
-                      fontSize: "0.7rem",
-                      fontWeight: "600",
-                      color: "#ffffff",
+                      gap: "8px",
+                      background: "rgba(168, 85, 247, 0.12)",
+                      border: "1px solid rgba(168, 85, 247, 0.4)",
+                      borderRadius: "6px",
+                      padding: "6px 12px",
+                      fontSize: "0.8rem",
+                      fontWeight: "700",
+                      color: "#c084fc",
                       cursor: "pointer",
                       transition: "all 0.15s ease",
+                      boxShadow: "0 0 10px rgba(168, 85, 247, 0.15)"
                     }}
                     onMouseOver={(e) => {
-                      e.currentTarget.style.background = "rgba(139, 92, 246, 0.16)";
+                      e.currentTarget.style.background = "rgba(168, 85, 247, 0.2)";
+                      e.currentTarget.style.border = "1px solid rgba(168, 85, 247, 0.6)";
+                      e.currentTarget.style.boxShadow = "0 0 14px rgba(168, 85, 247, 0.3)";
                     }}
                     onMouseOut={(e) => {
-                      e.currentTarget.style.background = "rgba(139, 92, 246, 0.08)";
+                      e.currentTarget.style.background = "rgba(168, 85, 247, 0.12)";
+                      e.currentTarget.style.border = "1px solid rgba(168, 85, 247, 0.4)";
+                      e.currentTarget.style.boxShadow = "0 0 10px rgba(168, 85, 247, 0.15)";
                     }}
                   >
-                    <Wallet size={12} style={{ color: "hsl(var(--accent-violet))" }} />
+                    <Wallet size={15} style={{ color: "#c084fc" }} />
                     <span>Wallet</span>
                   </button>
                 </div>
