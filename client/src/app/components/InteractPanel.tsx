@@ -31,18 +31,18 @@ function getFriendlyError(errMsg: string, abi: any[] | null): string {
             (c: any) => c.value === errorCode || parseInt(c.value, 10) === errorCode
           );
           if (matchingCase) {
-            return `Contract Custom Error "${matchingCase.name}" (Code #${errorCode}). This is a validation check failure built into the contract rules.`;
+            return `Contract Custom Error "${matchingCase.name}" (Code #${errorCode}). This is a validation check failure built into the contract rules.\n\n${errMsg}`;
           }
         }
       }
     }
     
-    return `Contract Error #${errorCode}: A custom validation or assertion check failed inside the contract.`;
+    return `Contract Error #${errorCode}: A custom validation or assertion check failed inside the contract.\n\n${errMsg}`;
   }
 
   // Check for VM trap / panic pattern
   if (errMsg.includes("UnreachableCodeReached") || errMsg.includes("InvalidAction")) {
-    return "VM Execution Error (Trap): The contract panicked or hit an unreachable path (e.g. assert fail, unwrap on None, or division by zero).";
+    return `VM Execution Error (Trap): The contract panicked or hit an unreachable path (e.g. assert fail, unwrap on None, or division by zero).\n\n${errMsg}`;
   }
 
   return errMsg;
@@ -81,25 +81,44 @@ export default function InteractPanel({
     }));
   };
 
-  // Maps UI input to ScVal
-  const mapInputToScVal = (val: string, typeStr: string): StellarSdk.xdr.ScVal => {
+  // Maps UI input to ScVal (supporting basic types & vectors)
+  const parseInputToScVal = (val: string, type: any): StellarSdk.xdr.ScVal => {
     const trimmed = val.trim();
-    if (typeStr === "u32" || typeStr === "i32") {
-      return StellarSdk.nativeToScVal(parseInt(trimmed, 10), { type: typeStr as any });
-    }
-    if (typeStr === "u64" || typeStr === "i64" || typeStr === "u128" || typeStr === "i128") {
-      return StellarSdk.nativeToScVal(BigInt(trimmed), { type: typeStr as any });
-    }
-    if (typeStr === "bool") {
-      return StellarSdk.nativeToScVal(trimmed.toLowerCase() === "true");
-    }
-    if (typeStr === "string") {
+    if (typeof type === "string") {
+      const typeStr = type.toLowerCase();
+      if (typeStr === "u32" || typeStr === "i32") {
+        return StellarSdk.nativeToScVal(parseInt(trimmed, 10), { type: typeStr as any });
+      }
+      if (typeStr === "u64" || typeStr === "i64" || typeStr === "u128" || typeStr === "i128") {
+        return StellarSdk.nativeToScVal(BigInt(trimmed), { type: typeStr as any });
+      }
+      if (typeStr === "bool") {
+        return StellarSdk.nativeToScVal(trimmed.toLowerCase() === "true" || trimmed === "1");
+      }
+      if (typeStr === "string") {
+        return StellarSdk.nativeToScVal(trimmed);
+      }
+      if (typeStr === "symbol") {
+        return StellarSdk.xdr.ScVal.scvSymbol(trimmed);
+      }
+      if (typeStr === "address") {
+        return StellarSdk.Address.fromString(trimmed).toScVal();
+      }
       return StellarSdk.nativeToScVal(trimmed);
+    } else if (type && typeof type === "object") {
+      if ("vec" in type) {
+        // Parse vector type
+        let arr: any[] = [];
+        try {
+          arr = Array.isArray(trimmed) ? trimmed : JSON.parse(trimmed);
+        } catch {
+          // Fallback to comma separated
+          arr = trimmed.split(",").map((v) => v.trim()).filter(Boolean);
+        }
+        const parsedElements = arr.map((item) => parseInputToScVal(String(item), type.vec.element_type));
+        return StellarSdk.xdr.ScVal.scvVec(parsedElements);
+      }
     }
-    if (typeStr === "address") {
-      return StellarSdk.Address.fromString(trimmed).toScVal();
-    }
-    // Default fallback
     return StellarSdk.nativeToScVal(trimmed);
   };
 
@@ -137,8 +156,7 @@ export default function InteractPanel({
       const paramsScVals: StellarSdk.xdr.ScVal[] = [];
       for (const input of inputsList) {
         const val = inputValues[`${funcName}-${input.name}`] || "";
-        const inputTypeStr = typeof input.type_ === "object" ? JSON.stringify(input.type_) : String(input.type_);
-        paramsScVals.push(mapInputToScVal(val, inputTypeStr));
+        paramsScVals.push(parseInputToScVal(val, input.type_));
       }
 
       // Load source account
