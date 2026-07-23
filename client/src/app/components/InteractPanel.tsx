@@ -14,7 +14,31 @@ interface InteractPanelProps {
   projectName?: string;
 }
 
+function getFriendlyError(errMsg: string, abi: any[] | null): string {
+  if (!errMsg) return "Unknown execution error";
 
+  // Check for Contract custom error pattern: e.g. "Error(Contract, #5)"
+  const contractErrorMatch = errMsg.match(/Error\(Contract,\s*#(\d+)\)/);
+  if (contractErrorMatch) {
+    const errorCode = parseInt(contractErrorMatch[1], 10);
+    
+    // Attempt to search ABI for a custom error matching this code
+    if (abi && Array.isArray(abi)) {
+      for (const item of abi) {
+        if (item.udt_error_enum_v0 && item.udt_error_enum_v0.cases) {
+          const cases = item.udt_error_enum_v0.cases;
+          const matchingCase = cases.find(
+            (c: any) => c.value === errorCode || parseInt(c.value, 10) === errorCode
+          );
+          if (matchingCase) {
+            return `Contract Custom Error "${matchingCase.name}" (Code #${errorCode}). This is a validation check failure built into the contract rules.`;
+          }
+        }
+      }
+    }
+    
+    return `Contract Error #${errorCode}: A custom validation or assertion check failed inside the contract.`;
+  }
 
   // Check for VM trap / panic pattern
   if (errMsg.includes("UnreachableCodeReached") || errMsg.includes("InvalidAction")) {
