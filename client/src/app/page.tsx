@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { Folder, Cpu, Activity, Play, RefreshCw, X, ShieldAlert, ChevronUp, ChevronDown, PanelLeftClose, PanelLeftOpen, Wallet } from "lucide-react";
+import { Folder, Cpu, Activity, Play, RefreshCw, X, ShieldAlert, ChevronUp, ChevronDown, PanelLeftClose, PanelLeftOpen, Wallet, MessageSquare } from "lucide-react";
 import FileTree from "./components/FileTree";
 import Editor from "./components/Editor";
 import CompilerPanel from "./components/CompilerPanel";
@@ -9,6 +9,7 @@ import DeployPanel from "./components/DeployPanel";
 import InteractPanel from "./components/InteractPanel";
 import ProjectSelector, { Project } from "./components/ProjectSelector";
 import WalletDropdown from "./components/WalletDropdown";
+import FeedbackModal from "./components/FeedbackModal";
 
 // Default template files
 const DEFAULT_FILES = {
@@ -69,6 +70,7 @@ export default function Home() {
   const [isDraggingSidebar, setIsDraggingSidebar] = useState<boolean>(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(false);
   const [isWalletDropdownOpen, setIsWalletDropdownOpen] = useState<boolean>(false);
+  const [isFeedbackModalOpen, setIsFeedbackModalOpen] = useState<boolean>(false);
 
   // Initialize projects & state on client side only (avoid SSR mismatch)
   useEffect(() => {
@@ -720,6 +722,38 @@ export default function Home() {
                 {/* Right Tab Actions */}
                 <div className="editor-tabs-actions" style={{ display: "flex", alignItems: "center", gap: "8px", flexShrink: 0 }}>
                   <button
+                    onClick={() => setIsFeedbackModalOpen(true)}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "8px",
+                      background: "rgba(6, 182, 212, 0.12)",
+                      border: "1px solid rgba(6, 182, 212, 0.4)",
+                      borderRadius: "6px",
+                      padding: "6px 12px",
+                      fontSize: "0.8rem",
+                      fontWeight: "700",
+                      color: "#22d3ee",
+                      cursor: "pointer",
+                      transition: "all 0.15s ease",
+                      boxShadow: "0 0 10px rgba(6, 182, 212, 0.15)"
+                    }}
+                    onMouseOver={(e) => {
+                      e.currentTarget.style.background = "rgba(6, 182, 212, 0.2)";
+                      e.currentTarget.style.border = "1px solid rgba(6, 182, 212, 0.6)";
+                      e.currentTarget.style.boxShadow = "0 0 14px rgba(6, 182, 212, 0.3)";
+                    }}
+                    onMouseOut={(e) => {
+                      e.currentTarget.style.background = "rgba(6, 182, 212, 0.12)";
+                      e.currentTarget.style.border = "1px solid rgba(6, 182, 212, 0.4)";
+                      e.currentTarget.style.boxShadow = "0 0 10px rgba(6, 182, 212, 0.15)";
+                    }}
+                  >
+                    <MessageSquare size={15} style={{ color: "#22d3ee" }} />
+                    <span>Share Feedback</span>
+                  </button>
+
+                  <button
                     onClick={() => setIsWalletDropdownOpen(!isWalletDropdownOpen)}
                     style={{
                       display: "flex",
@@ -829,6 +863,12 @@ export default function Home() {
           <span style={{ color: "hsl(var(--accent-success))", fontWeight: "600" }}>Online</span>
         </div>
       </footer>
+
+      <FeedbackModal
+        isOpen={isFeedbackModalOpen}
+        onClose={() => setIsFeedbackModalOpen(false)}
+        addLog={addLog}
+      />
     </div>
   );
 }

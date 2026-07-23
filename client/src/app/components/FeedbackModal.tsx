@@ -266,14 +266,13 @@ export default function FeedbackModal({ isOpen, onClose, addLog }: FeedbackModal
                     Details
                   </label>
                   <span style={{ fontSize: "0.68rem", color: "hsl(var(--text-muted))" }}>
-                    {description.length} / 500
+                    {description.length} characters
                   </span>
                 </div>
                 <textarea
                   placeholder="Provide details about your experience or request..."
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
-                  maxLength={500}
                   rows={4}
                   className="form-control"
                   style={{
