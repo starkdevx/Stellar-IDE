@@ -48,6 +48,63 @@ function getFriendlyError(errMsg: string, abi: any[] | null): string {
   return errMsg;
 }
 
+function getPlaceholderForType(type: any): string {
+  if (typeof type === "string") {
+    const t = type.toLowerCase();
+    if (t === "u32" || t === "i32" || t === "u64" || t === "i64" || t === "u128" || t === "i128") {
+      return "e.g. 123";
+    }
+    if (t === "bool") {
+      return "e.g. true";
+    }
+    if (t === "address") {
+      return "e.g. G...";
+    }
+    return "value";
+  } else if (type && typeof type === "object") {
+    if ("vec" in type) {
+      const elemType = type.vec.element_type;
+      if (typeof elemType === "string") {
+        const t = elemType.toLowerCase();
+        if (t === "u32" || t === "i32" || t === "u64" || t === "i64" || t === "u128" || t === "i128") {
+          return "e.g. [1, 2, 3] or 1,2,3";
+        }
+        if (t === "bool") {
+          return "e.g. [true, false] or true,false";
+        }
+        if (t === "address") {
+          return "e.g. [G..., G...]";
+        }
+      }
+      return 'e.g. ["val1", "val2"] or val1,val2';
+    }
+  }
+  return "value";
+}
+
+function formatTypeString(type: any): string {
+  if (typeof type === "string") {
+    const t = type.trim();
+    if (t === "string") return "String";
+    if (t === "symbol") return "Symbol";
+    if (t === "address") return "Address";
+    if (t === "bool") return "bool";
+    return t;
+  }
+  if (type && typeof type === "object") {
+    if ("vec" in type) {
+      return `Vec<${formatTypeString(type.vec.element_type)}>`;
+    }
+    if ("option" in type) {
+      return `Option<${formatTypeString(type.option.value_type)}>`;
+    }
+    if ("udt" in type) {
+      return type.udt.name;
+    }
+  }
+  return JSON.stringify(type);
+}
+
 export default function InteractPanel({
   abi,
   contractId,
@@ -308,7 +365,7 @@ export default function InteractPanel({
                     {func.inputs && func.inputs.length > 0 && (
                       <div style={{ display: "flex", flexDirection: "column", gap: "10px", marginBottom: "12px" }}>
                         {func.inputs.map((input: any) => {
-                          const inputTypeStr = typeof input.type_ === "object" ? JSON.stringify(input.type_) : String(input.type_);
+                          const inputTypeStr = formatTypeString(input.type_);
                           
                           return (
                             <div key={input.name} className="input-group" style={{ margin: 0 }}>
@@ -319,7 +376,7 @@ export default function InteractPanel({
                               <input
                                 type="text"
                                 className="form-control form-control-mono"
-                                placeholder={inputTypeStr.includes("vec") ? `e.g. ["val1", "val2"]` : `value`}
+                                placeholder={getPlaceholderForType(input.type_)}
                                 value={inputValues[`${func.name}-${input.name}`] || ""}
                                 onChange={(e) => handleInputChange(func.name, input.name, e.target.value)}
                               />
