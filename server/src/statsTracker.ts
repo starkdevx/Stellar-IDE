@@ -1,8 +1,9 @@
-import fs from 'fs';
-import path from 'path';
 import crypto from 'crypto';
+import { dbConnect } from './db';
+import StatsSummary from './models/StatsSummary';
+import UserStats from './models/UserStats';
 
-interface UserStats {
+interface UserStatsData {
   visits: number;
   compilations: {
     success: number;
@@ -25,11 +26,8 @@ interface StatsSchema {
     totalInteractions: number;
     uniqueUsers: number;
   };
-  users: Record<string, UserStats>;
+  users: Record<string, UserStatsData>;
 }
-
-// Store stats.json inside test-build / workspace directory
-const STATS_FILE = path.resolve(process.env.WORKSPACE_DIR || path.resolve(process.cwd(), '../test-build'), 'stats.json');
 
 class StatsTracker {
   private stats: StatsSchema = {
@@ -50,57 +48,66 @@ class StatsTracker {
     this.loadStats();
   }
 
-  private loadStats() {
+  private async loadStats() {
     try {
-      if (fs.existsSync(STATS_FILE)) {
-        const fileContent = fs.readFileSync(STATS_FILE, 'utf8');
-        const parsed = JSON.parse(fileContent);
-        if (parsed.salt) {
-          this.stats = parsed;
-          // Apply schema migrations for new tracking parameters
-          if (this.stats.summary.totalDeploys === undefined) this.stats.summary.totalDeploys = 0;
-          if (this.stats.summary.totalInteractions === undefined) this.stats.summary.totalInteractions = 0;
-          for (const key of Object.keys(this.stats.users)) {
-            if (this.stats.users[key].deploys === undefined) this.stats.users[key].deploys = 0;
-            if (this.stats.users[key].interactions === undefined) this.stats.users[key].interactions = 0;
-          }
-          return;
-        }
+      await dbConnect();
+
+      // Load or create StatsSummary
+      let summaryDoc = await StatsSummary.findOne();
+      if (!summaryDoc) {
+        const salt = crypto.randomBytes(32).toString('hex');
+        summaryDoc = await StatsSummary.create({
+          salt,
+          totalCompilations: 0,
+          successfulCompilations: 0,
+          failedCompilations: 0,
+          totalVisits: 0,
+          totalDeploys: 0,
+          totalInteractions: 0
+        });
       }
-    } catch (err) {
-      console.error('[STATS] Error reading stats file, resetting:', err);
-    }
 
-    // Generate a secure persistent hashing salt to keep IP anonymization stable across server restarts
-    this.stats.salt = crypto.randomBytes(32).toString('hex');
-    this.saveStatsSync();
-  }
+      this.stats.salt = summaryDoc.salt;
+      this.stats.summary = {
+        totalCompilations: summaryDoc.totalCompilations,
+        successfulCompilations: summaryDoc.successfulCompilations,
+        failedCompilations: summaryDoc.failedCompilations,
+        totalVisits: summaryDoc.totalVisits,
+        totalDeploys: summaryDoc.totalDeploys,
+        totalInteractions: summaryDoc.totalInteractions,
+        uniqueUsers: 0
+      };
 
-  private saveStatsSync() {
-    try {
-      const dir = path.dirname(STATS_FILE);
-      if (!fs.existsSync(dir)) {
-        fs.mkdirSync(dir, { recursive: true });
+      // Load all UserStats
+      const userDocs = await UserStats.find();
+      const usersMap: Record<string, UserStatsData> = {};
+      for (const u of userDocs) {
+        usersMap[u.ipHash] = {
+          visits: u.visits,
+          compilations: {
+            success: u.compilations.success,
+            failed: u.compilations.failed
+          },
+          deploys: u.deploys,
+          interactions: u.interactions,
+          firstSeen: u.firstSeen.toISOString(),
+          lastActive: u.lastActive.toISOString()
+        };
       }
-      fs.writeFileSync(STATS_FILE, JSON.stringify(this.stats, null, 2), 'utf8');
+
+      this.stats.users = usersMap;
+      this.stats.summary.uniqueUsers = userDocs.length;
+
+      console.log(`[STATS] Loaded stats from MongoDB. Users count: ${userDocs.length}`);
     } catch (err) {
-      console.error('[STATS] Error writing stats file:', err);
+      console.error('[STATS] Error loading stats from MongoDB:', err);
+      // Generate a fallback salt in memory if DB fails, to prevent crash
+      if (!this.stats.salt) {
+        this.stats.salt = crypto.randomBytes(32).toString('hex');
+      }
     }
   }
 
-  private async saveStatsAsync() {
-    try {
-      const dir = path.dirname(STATS_FILE);
-      await fs.promises.mkdir(dir, { recursive: true });
-      await fs.promises.writeFile(STATS_FILE, JSON.stringify(this.stats, null, 2), 'utf8');
-    } catch (err) {
-      console.error('[STATS] Async save error:', err);
-    }
-  }
-
-  /**
-   * Generates a stable anonymized hash for a client IP address (GDPR/CCPA compliant)
-   */
   private getHash(ip: string): string {
     return crypto
       .createHash('sha256')
@@ -108,17 +115,56 @@ class StatsTracker {
       .digest('hex');
   }
 
-  /**
-   * Records a user session visit (called on page load)
-   */
+  private async syncUserToDb(ipHash: string, user: UserStatsData) {
+    try {
+      await dbConnect();
+      await UserStats.findOneAndUpdate(
+        { ipHash },
+        {
+          visits: user.visits,
+          compilations: user.compilations,
+          deploys: user.deploys,
+          interactions: user.interactions,
+          firstSeen: new Date(user.firstSeen),
+          lastActive: new Date(user.lastActive)
+        },
+        { upsert: true, returnDocument: 'after' }
+      );
+    } catch (err) {
+      console.error(`[STATS] Failed to sync user ${ipHash} to MongoDB:`, err);
+    }
+  }
+
+  private async syncSummaryToDb() {
+    try {
+      await dbConnect();
+      const s = this.stats.summary;
+      await StatsSummary.findOneAndUpdate(
+        {},
+        {
+          totalCompilations: s.totalCompilations,
+          successfulCompilations: s.successfulCompilations,
+          failedCompilations: s.failedCompilations,
+          totalVisits: s.totalVisits,
+          totalDeploys: s.totalDeploys,
+          totalInteractions: s.totalInteractions
+        },
+        { upsert: true }
+      );
+    } catch (err) {
+      console.error('[STATS] Failed to sync summary to MongoDB:', err);
+    }
+  }
+
   public recordVisit(ip: string) {
     const hashed = this.getHash(ip);
     const now = new Date().toISOString();
 
     this.stats.summary.totalVisits += 1;
 
-    if (!this.stats.users[hashed]) {
-      this.stats.users[hashed] = {
+    let user = this.stats.users[hashed];
+    if (!user) {
+      user = {
         visits: 1,
         compilations: { success: 0, failed: 0 },
         deploys: 0,
@@ -126,19 +172,19 @@ class StatsTracker {
         firstSeen: now,
         lastActive: now
       };
+      this.stats.users[hashed] = user;
       this.stats.summary.uniqueUsers = Object.keys(this.stats.users).length;
       console.log(`[STATS] New unique user detected. Total: ${this.stats.summary.uniqueUsers}`);
     } else {
-      this.stats.users[hashed].visits += 1;
-      this.stats.users[hashed].lastActive = now;
+      user.visits += 1;
+      user.lastActive = now;
     }
 
-    this.saveStatsAsync();
+    // Run DB sync in background
+    this.syncUserToDb(hashed, user);
+    this.syncSummaryToDb();
   }
 
-  /**
-   * Records a contract compilation compile event
-   */
   public recordCompilation(ip: string, success: boolean) {
     const hashed = this.getHash(ip);
     const now = new Date().toISOString();
@@ -150,8 +196,9 @@ class StatsTracker {
       this.stats.summary.failedCompilations += 1;
     }
 
-    if (!this.stats.users[hashed]) {
-      this.stats.users[hashed] = {
+    let user = this.stats.users[hashed];
+    if (!user) {
+      user = {
         visits: 1,
         compilations: { success: success ? 1 : 0, failed: success ? 0 : 1 },
         deploys: 0,
@@ -159,31 +206,33 @@ class StatsTracker {
         firstSeen: now,
         lastActive: now
       };
+      this.stats.users[hashed] = user;
       this.stats.summary.uniqueUsers = Object.keys(this.stats.users).length;
     } else {
       if (success) {
-        this.stats.users[hashed].compilations.success += 1;
+        user.compilations.success += 1;
       } else {
-        this.stats.users[hashed].compilations.failed += 1;
+        user.compilations.failed += 1;
       }
-      this.stats.users[hashed].lastActive = now;
+      user.lastActive = now;
     }
 
     console.log(`[STATS] Compile recorded. Success: ${success} | Total Compiles: ${this.stats.summary.totalCompilations}`);
-    this.saveStatsAsync();
+    
+    // Run DB sync in background
+    this.syncUserToDb(hashed, user);
+    this.syncSummaryToDb();
   }
 
-  /**
-   * Records a Freighter contract deployment event
-   */
   public recordDeploy(ip: string) {
     const hashed = this.getHash(ip);
     const now = new Date().toISOString();
 
     this.stats.summary.totalDeploys += 1;
 
-    if (!this.stats.users[hashed]) {
-      this.stats.users[hashed] = {
+    let user = this.stats.users[hashed];
+    if (!user) {
+      user = {
         visits: 1,
         compilations: { success: 0, failed: 0 },
         deploys: 1,
@@ -191,27 +240,29 @@ class StatsTracker {
         firstSeen: now,
         lastActive: now
       };
+      this.stats.users[hashed] = user;
       this.stats.summary.uniqueUsers = Object.keys(this.stats.users).length;
     } else {
-      this.stats.users[hashed].deploys += 1;
-      this.stats.users[hashed].lastActive = now;
+      user.deploys += 1;
+      user.lastActive = now;
     }
 
     console.log(`[STATS] Deploy recorded. Total Deploys: ${this.stats.summary.totalDeploys}`);
-    this.saveStatsAsync();
+    
+    // Run DB sync in background
+    this.syncUserToDb(hashed, user);
+    this.syncSummaryToDb();
   }
 
-  /**
-   * Records a contract function interaction invocation event
-   */
   public recordInteraction(ip: string) {
     const hashed = this.getHash(ip);
     const now = new Date().toISOString();
 
     this.stats.summary.totalInteractions += 1;
 
-    if (!this.stats.users[hashed]) {
-      this.stats.users[hashed] = {
+    let user = this.stats.users[hashed];
+    if (!user) {
+      user = {
         visits: 1,
         compilations: { success: 0, failed: 0 },
         deploys: 0,
@@ -219,19 +270,20 @@ class StatsTracker {
         firstSeen: now,
         lastActive: now
       };
+      this.stats.users[hashed] = user;
       this.stats.summary.uniqueUsers = Object.keys(this.stats.users).length;
     } else {
-      this.stats.users[hashed].interactions += 1;
-      this.stats.users[hashed].lastActive = now;
+      user.interactions += 1;
+      user.lastActive = now;
     }
 
     console.log(`[STATS] Interaction recorded. Total Interactions: ${this.stats.summary.totalInteractions}`);
-    this.saveStatsAsync();
+    
+    // Run DB sync in background
+    this.syncUserToDb(hashed, user);
+    this.syncSummaryToDb();
   }
 
-  /**
-   * Returns copy of stats data without exposing internal hashing salt (CWE-200 prevention)
-   */
   public getStats() {
     const { salt, ...safeStats } = this.stats;
     return safeStats;
