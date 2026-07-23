@@ -1,13 +1,14 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { Folder, Cpu, Activity, Play, RefreshCw, X, ShieldAlert, ChevronUp, ChevronDown, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { Folder, Cpu, Activity, Play, RefreshCw, X, ShieldAlert, ChevronUp, ChevronDown, PanelLeftClose, PanelLeftOpen, Wallet } from "lucide-react";
 import FileTree from "./components/FileTree";
 import Editor from "./components/Editor";
 import CompilerPanel from "./components/CompilerPanel";
 import DeployPanel from "./components/DeployPanel";
 import InteractPanel from "./components/InteractPanel";
 import ProjectSelector, { Project } from "./components/ProjectSelector";
+import WalletDropdown from "./components/WalletDropdown";
 
 // Default template files
 const DEFAULT_FILES = {
@@ -67,6 +68,7 @@ export default function Home() {
   const [sidebarWidth, setSidebarWidth] = useState<number>(320);
   const [isDraggingSidebar, setIsDraggingSidebar] = useState<boolean>(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(false);
+  const [isWalletDropdownOpen, setIsWalletDropdownOpen] = useState<boolean>(false);
 
   // Initialize projects & state on client side only (avoid SSR mismatch)
   useEffect(() => {
@@ -658,40 +660,100 @@ export default function Home() {
         >
           <div className="editor-container">
             {(openTabs.length > 0 || isSidebarCollapsed) && (
-              <div className="editor-tabs-bar">
-                {isSidebarCollapsed && (
-                  <button
-                    className="sidebar-expand-floating-btn"
-                    onClick={() => setIsSidebarCollapsed(false)}
-                    title="Expand Sidebar Explorer"
-                  >
-                    <PanelLeftOpen size={16} />
-                  </button>
-                )}
-                {openTabs.map((tabPath) => {
-                  const isActive = tabPath === activeFile;
-                  const fileName = tabPath.split("/").pop() || tabPath;
-                  return (
-                    <div
-                      key={tabPath}
-                      className={`editor-tab ${isActive ? "active" : ""}`}
-                      onClick={() => handleSelectFile(tabPath)}
-                      title={tabPath}
+              <div 
+                className="editor-tabs-bar"
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  width: "100%",
+                  paddingRight: "10px",
+                  borderBottom: "1px solid rgba(255, 255, 255, 0.05)",
+                  background: "#060814"
+                }}
+              >
+                <div 
+                  className="editor-tabs-list"
+                  style={{
+                    display: "flex",
+                    flex: 1,
+                    overflowX: "auto",
+                    gap: "2px",
+                    scrollbarWidth: "none"
+                  }}
+                >
+                  {isSidebarCollapsed && (
+                    <button
+                      className="sidebar-expand-floating-btn"
+                      onClick={() => setIsSidebarCollapsed(false)}
+                      title="Expand Sidebar Explorer"
+                      style={{ margin: "4px" }}
                     >
-                      <span className="tab-name">{fileName}</span>
-                      <button
-                        className="tab-close-btn"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleCloseTab(tabPath);
-                        }}
+                      <PanelLeftOpen size={16} />
+                    </button>
+                  )}
+                  {openTabs.map((tabPath) => {
+                    const isActive = tabPath === activeFile;
+                    const fileName = tabPath.split("/").pop() || tabPath;
+                    return (
+                      <div
+                        key={tabPath}
+                        className={`editor-tab ${isActive ? "active" : ""}`}
+                        onClick={() => handleSelectFile(tabPath)}
+                        title={tabPath}
                       >
-                        <X size={12} />
-                      </button>
-                    </div>
-                  );
-                })}
+                        <span className="tab-name">{fileName}</span>
+                        <button
+                          className="tab-close-btn"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleCloseTab(tabPath);
+                          }}
+                        >
+                          <X size={12} />
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Right Tab Actions */}
+                <div className="editor-tabs-actions" style={{ display: "flex", alignItems: "center", gap: "8px", flexShrink: 0 }}>
+                  <button
+                    onClick={() => setIsWalletDropdownOpen(!isWalletDropdownOpen)}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "6px",
+                      background: "rgba(139, 92, 246, 0.08)",
+                      border: "1px solid rgba(139, 92, 246, 0.2)",
+                      borderRadius: "4px",
+                      padding: "4px 8px",
+                      fontSize: "0.7rem",
+                      fontWeight: "600",
+                      color: "#ffffff",
+                      cursor: "pointer",
+                      transition: "all 0.15s ease",
+                    }}
+                    onMouseOver={(e) => {
+                      e.currentTarget.style.background = "rgba(139, 92, 246, 0.16)";
+                    }}
+                    onMouseOut={(e) => {
+                      e.currentTarget.style.background = "rgba(139, 92, 246, 0.08)";
+                    }}
+                  >
+                    <Wallet size={12} style={{ color: "hsl(var(--accent-violet))" }} />
+                    <span>Wallet</span>
+                  </button>
+                </div>
               </div>
+            )}
+
+            {isWalletDropdownOpen && (
+              <WalletDropdown
+                onClose={() => setIsWalletDropdownOpen(false)}
+                addLog={addLog}
+              />
             )}
 
             {activeFile && openTabs.includes(activeFile) ? (
