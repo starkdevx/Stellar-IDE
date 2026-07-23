@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from "react";
 import * as StellarSdk from "@stellar/stellar-sdk";
 import { isConnected, getAddress } from "@stellar/freighter-api";
-import { X, RefreshCw, ExternalLink, Coins, AlertCircle, Cpu, Wallet } from "lucide-react";
+import { X, RefreshCw, ExternalLink, Coins, AlertCircle, Cpu, Wallet, ChevronDown, ChevronRight } from "lucide-react";
 import { 
   getActiveWalletType, 
   getOrCreatePlaygroundSecret, 
@@ -30,6 +30,12 @@ export default function WalletDropdown({ onClose, addLog }: WalletDropdownProps)
   const [transactions, setTransactions] = useState<TransactionRecord[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string>("");
+
+  // Collapsible Send States
+  const [isSendOpen, setIsSendOpen] = useState(false);
+  const [sendRecipient, setSendRecipient] = useState("");
+  const [sendAmount, setSendAmount] = useState("");
+  const [sending, setSending] = useState(false);
 
   const horizonUrl = "https://horizon-testnet.stellar.org";
 
@@ -110,6 +116,89 @@ export default function WalletDropdown({ onClose, addLog }: WalletDropdownProps)
     }
   };
 
+  const handleSendXLM = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const recipient = sendRecipient.trim();
+    const amount = sendAmount.trim();
+
+    if (!recipient || !amount || sending) return;
+    
+    if (!recipient.startsWith("G") || recipient.length !== 56) {
+      alert("Invalid recipient address. Must be a 56-character Stellar public key starting with 'G'.");
+      return;
+    }
+    
+    const parsedAmount = parseFloat(amount);
+    if (isNaN(parsedAmount) || parsedAmount <= 0) {
+      alert("Please enter a valid positive XLM amount.");
+      return;
+    }
+
+    setSending(true);
+    addLog(`Initiating payment of ${amount} XLM to ${recipient}...`, "info");
+
+    try {
+      const horizonServer = new StellarSdk.Horizon.Server(horizonUrl);
+      const sourceAccount = await horizonServer.loadAccount(address);
+      
+      let tx = new StellarSdk.TransactionBuilder(sourceAccount, {
+        fee: "100",
+        networkPassphrase: StellarSdk.Networks.TESTNET,
+      })
+      .addOperation(StellarSdk.Operation.payment({
+        destination: recipient,
+        asset: StellarSdk.Asset.native(),
+        amount: amount,
+      }))
+      .setTimeout(60)
+      .build();
+
+      let signedTx;
+      if (walletType === "playground") {
+        const secret = getOrCreatePlaygroundSecret();
+        tx.sign(StellarSdk.Keypair.fromSecret(secret));
+        signedTx = tx;
+      } else {
+        const { signTransaction } = await import("@stellar/freighter-api");
+        const signedResult = await signTransaction(tx.toXDR(), {
+          networkPassphrase: StellarSdk.Networks.TESTNET,
+        });
+        
+        if (!signedResult || !signedResult.signedTxXdr) {
+          throw new Error("Transaction signature rejected by Freighter");
+        }
+        
+        signedTx = StellarSdk.TransactionBuilder.fromXDR(
+          signedResult.signedTxXdr,
+          StellarSdk.Networks.TESTNET
+        );
+      }
+
+      addLog("Submitting payment transaction to Stellar network...", "info");
+      const submitResponse = await horizonServer.submitTransaction(signedTx);
+      
+      addLog(`Successfully sent ${amount} XLM to ${recipient}! Hash: ${submitResponse.hash.slice(0, 8)}...`, "success");
+      
+      // Clear forms and collapse
+      setSendRecipient("");
+      setSendAmount("");
+      setIsSendOpen(false);
+
+      // Trigger update
+      await loadWalletDetails();
+      
+      // Record interaction stats activity securely
+      fetch("/api/activity/interact", { method: "POST" }).catch(() => {});
+
+    } catch (err: any) {
+      console.error(err);
+      addLog(`Failed to send XLM: ${err.message || JSON.stringify(err)}`, "error");
+      alert(`Failed to send XLM: ${err.message || "Unknown error"}`);
+    } finally {
+      setSending(false);
+    }
+  };
+
   useEffect(() => {
     loadWalletDetails();
 
@@ -187,7 +276,7 @@ export default function WalletDropdown({ onClose, addLog }: WalletDropdownProps)
       </div>
 
       {/* Body */}
-      <div style={{ padding: "16px", display: "flex", flexDirection: "column", gap: "16px" }}>
+      <div style={{ padding: "16px", display: "flex", flexDirection: "column", gap: "14px" }}>
         {error ? (
           <div style={{ display: "flex", alignItems: "center", gap: "8px", padding: "10px", background: "rgba(239, 68, 68, 0.04)", border: "1px solid rgba(239, 68, 68, 0.12)", borderRadius: "6px", color: "hsl(var(--accent-error))", fontSize: "0.72rem" }}>
             <AlertCircle size={14} style={{ flexShrink: 0 }} />
@@ -203,13 +292,100 @@ export default function WalletDropdown({ onClose, addLog }: WalletDropdownProps)
               </span>
             </div>
 
-            {/* Balance */}
-            <div style={{ display: "flex", flexDirection: "column", gap: "4px", alignItems: "center", padding: "12px 0", background: "rgba(255, 255, 255, 0.01)", border: "1px solid rgba(255, 255, 255, 0.03)", borderRadius: "6px" }}>
-              <Coins size={20} style={{ color: "hsl(var(--accent-cyan))", marginBottom: "4px" }} />
-              <span style={{ fontSize: "1.2rem", fontWeight: "700", fontFamily: "var(--font-mono)", color: "#ffffff" }}>
+            {/* Balance (Concised) */}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 12px", background: "rgba(255, 255, 255, 0.01)", border: "1px solid rgba(255, 255, 255, 0.03)", borderRadius: "6px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                <Coins size={14} style={{ color: "hsl(var(--accent-cyan))" }} />
+                <span style={{ fontSize: "0.74rem", color: "hsl(var(--text-secondary))" }}>Balance:</span>
+              </div>
+              <span style={{ fontSize: "0.85rem", fontWeight: "700", fontFamily: "var(--font-mono)", color: "#ffffff" }}>
                 {balance} XLM
               </span>
-              <span style={{ fontSize: "0.65rem", color: "hsl(var(--text-muted))" }}>Stellar Testnet Assets</span>
+            </div>
+
+            {/* Collapsible Send Section */}
+            <div style={{ display: "flex", flexDirection: "column", gap: "6px", borderBottom: "1px solid rgba(255, 255, 255, 0.04)", paddingBottom: "12px" }}>
+              <button 
+                onClick={() => setIsSendOpen(!isSendOpen)}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "4px",
+                  background: "transparent",
+                  border: "none",
+                  color: "#ffffff",
+                  fontSize: "0.72rem",
+                  fontWeight: "700",
+                  cursor: "pointer",
+                  padding: 0,
+                  textAlign: "left"
+                }}
+              >
+                {isSendOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                <span>Send</span>
+              </button>
+
+              {isSendOpen && (
+                <form onSubmit={handleSendXLM} style={{ display: "flex", flexDirection: "column", gap: "8px", marginTop: "4px" }}>
+                  <input
+                    type="text"
+                    placeholder="Recipient address (starts with G)"
+                    value={sendRecipient}
+                    onChange={(e) => setSendRecipient(e.target.value)}
+                    style={{
+                      background: "rgba(0, 0, 0, 0.2)",
+                      border: "1px solid rgba(255, 255, 255, 0.08)",
+                      borderRadius: "4px",
+                      padding: "6px 10px",
+                      color: "#ffffff",
+                      fontSize: "0.7rem",
+                      outline: "none"
+                    }}
+                    required
+                  />
+                  <input
+                    type="text"
+                    placeholder="XLM amount"
+                    value={sendAmount}
+                    onChange={(e) => setSendAmount(e.target.value)}
+                    style={{
+                      background: "rgba(0, 0, 0, 0.2)",
+                      border: "1px solid rgba(255, 255, 255, 0.08)",
+                      borderRadius: "4px",
+                      padding: "6px 10px",
+                      color: "#ffffff",
+                      fontSize: "0.7rem",
+                      outline: "none"
+                    }}
+                    required
+                  />
+                  <button
+                    type="submit"
+                    disabled={sending}
+                    className="btn btn-primary"
+                    style={{
+                      padding: "6px 10px",
+                      fontSize: "0.7rem",
+                      fontWeight: "700",
+                      justifyContent: "center",
+                      background: sending ? "rgba(168, 85, 247, 0.3)" : "hsl(var(--accent-violet))",
+                      border: "none",
+                      borderRadius: "4px",
+                      color: "#ffffff",
+                      cursor: "pointer"
+                    }}
+                  >
+                    {sending ? (
+                      <span style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                        <span className="spinner" style={{ width: "10px", height: "10px", borderWidth: "1px" }}></span>
+                        Sending...
+                      </span>
+                    ) : (
+                      "Send"
+                    )}
+                  </button>
+                </form>
+              )}
             </div>
 
             {/* Transactions Header */}
@@ -226,7 +402,7 @@ export default function WalletDropdown({ onClose, addLog }: WalletDropdownProps)
             </div>
 
             {/* Transactions List */}
-            <div style={{ maxHeight: "180px", overflowY: "auto", display: "flex", flexDirection: "column", gap: "6px" }}>
+            <div style={{ maxHeight: "150px", overflowY: "auto", display: "flex", flexDirection: "column", gap: "6px" }}>
               {loading ? (
                 <div style={{ display: "flex", justifyContent: "center", padding: "20px 0" }}>
                   <div className="spinner" style={{ width: "16px", height: "16px" }}></div>
