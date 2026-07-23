@@ -67,16 +67,16 @@ function getPlaceholderForType(type: any): string {
       if (typeof elemType === "string") {
         const t = elemType.toLowerCase();
         if (t === "u32" || t === "i32" || t === "u64" || t === "i64" || t === "u128" || t === "i128") {
-          return "e.g. [1, 2, 3] or 1,2,3";
+          return "e.g. [1, 2]";
         }
         if (t === "bool") {
-          return "e.g. [true, false] or true,false";
+          return "e.g. [true, false]";
         }
         if (t === "address") {
           return "e.g. [G..., G...]";
         }
       }
-      return 'e.g. ["val1", "val2"] or val1,val2';
+      return 'e.g. ["val1", "val2"]';
     }
   }
   return "value";
@@ -114,11 +114,14 @@ export default function InteractPanel({
 }: InteractPanelProps) {
   const [manualContractId, setManualContractId] = useState("");
   const [inputValues, setInputValues] = useState<{ [key: string]: string }>({});
-  const [invoking, setInvoking] = useState<{ [funcName: string]: boolean }>({});
+  const [invoking, setInvoking] = useState<Record<string, boolean>>({});
+  const [openDropdown, setOpenDropdown] = useState<string | null>(null);
   const [outputs, setOutputs] = useState<{ [funcName: string]: string }>({});
 
   const rpcUrl = "https://soroban-testnet.stellar.org";
   const horizonUrl = "https://horizon-testnet.stellar.org";
+
+
 
   const handleManualContractIdSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -136,6 +139,32 @@ export default function InteractPanel({
       ...prev,
       [`${funcName}-${paramName}`]: val,
     }));
+  };
+
+  const handleAddressQuickSelect = async (funcName: string, paramName: string, action: string) => {
+    if (action === "current") {
+      const walletType = getActiveWalletType();
+      let userAddress = "";
+      if (walletType === "playground") {
+        const secret = getOrCreatePlaygroundSecret();
+        userAddress = getPublicKeyFromSecret(secret);
+      } else {
+        const userAddressFreighter = await getAddress();
+        if (userAddressFreighter && typeof userAddressFreighter === "string") {
+          userAddress = userAddressFreighter;
+        } else if (userAddressFreighter && (userAddressFreighter as any).address) {
+          userAddress = (userAddressFreighter as any).address;
+        }
+      }
+      if (userAddress) {
+        handleInputChange(funcName, paramName, userAddress);
+      } else {
+        alert("No active wallet connected!");
+      }
+    } else if (action === "random") {
+      const randomKeypair = StellarSdk.Keypair.random();
+      handleInputChange(funcName, paramName, randomKeypair.publicKey());
+    }
   };
 
   // Maps UI input to ScVal (supporting basic types & vectors)
@@ -373,13 +402,77 @@ export default function InteractPanel({
                                 <span>{input.name}</span>
                                 <span style={{ color: "hsl(var(--text-muted))" }}>({inputTypeStr})</span>
                               </label>
-                              <input
-                                type="text"
-                                className="form-control form-control-mono"
-                                placeholder={getPlaceholderForType(input.type_)}
-                                value={inputValues[`${func.name}-${input.name}`] || ""}
-                                onChange={(e) => handleInputChange(func.name, input.name, e.target.value)}
-                              />
+                              {inputTypeStr === "Address" ? (
+                                <div className="form-control form-control-mono" style={{ display: "flex", alignItems: "center", padding: "0 8px 0 0", gap: "0", position: "relative" }}>
+                                  <input
+                                    type="text"
+                                    placeholder={getPlaceholderForType(input.type_)}
+                                    value={inputValues[`${func.name}-${input.name}`] || ""}
+                                    onChange={(e) => handleInputChange(func.name, input.name, e.target.value)}
+                                    style={{ flex: 1, border: "none", background: "transparent", color: "inherit", padding: "8px 12px", outline: "none", width: "100%", fontSize: "inherit", fontFamily: "inherit" }}
+                                  />
+                                  <div style={{ position: "relative" }}>
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setOpenDropdown(openDropdown === `${func.name}-${input.name}` ? null : `${func.name}-${input.name}`);
+                                      }}
+                                      style={{ padding: "4px 8px", fontSize: "0.75rem", background: "rgba(255, 255, 255, 0.1)", border: "none", borderRadius: "4px", color: "hsl(var(--text-secondary))", cursor: "pointer", display: "flex", alignItems: "center", gap: "4px" }}
+                                    >
+                                      Auto Fill <span style={{ fontSize: "0.6rem" }}>▼</span>
+                                    </button>
+                                    
+                                    {openDropdown === `${func.name}-${input.name}` && (
+                                      <>
+                                        <div 
+                                          style={{ position: "fixed", inset: 0, zIndex: 90 }} 
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            setOpenDropdown(null);
+                                          }} 
+                                        />
+                                        <div style={{ position: "absolute", top: "100%", right: 0, marginTop: "4px", background: "hsl(var(--bg-dark))", border: "1px solid rgba(255, 255, 255, 0.1)", borderRadius: "6px", padding: "4px", zIndex: 100, width: "160px", boxShadow: "0 4px 12px rgba(0,0,0,0.5)" }}>
+                                          <button
+                                          type="button"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleAddressQuickSelect(func.name, input.name, "current");
+                                            setOpenDropdown(null);
+                                          }}
+                                          style={{ width: "100%", textAlign: "left", padding: "8px", background: "transparent", border: "none", color: "hsl(var(--text-primary))", fontSize: "0.8rem", cursor: "pointer", borderRadius: "4px" }}
+                                          onMouseOver={(e) => e.currentTarget.style.background = "rgba(255, 255, 255, 0.05)"}
+                                          onMouseOut={(e) => e.currentTarget.style.background = "transparent"}
+                                        >
+                                          Current Wallet
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleAddressQuickSelect(func.name, input.name, "random");
+                                            setOpenDropdown(null);
+                                          }}
+                                          style={{ width: "100%", textAlign: "left", padding: "8px", background: "transparent", border: "none", color: "hsl(var(--text-primary))", fontSize: "0.8rem", cursor: "pointer", borderRadius: "4px" }}
+                                          onMouseOver={(e) => e.currentTarget.style.background = "rgba(255, 255, 255, 0.05)"}
+                                          onMouseOut={(e) => e.currentTarget.style.background = "transparent"}
+                                        >
+                                          Random Address
+                                        </button>
+                                      </div>
+                                      </>
+                                    )}
+                                  </div>
+                                </div>
+                              ) : (
+                                <input
+                                  type="text"
+                                  className="form-control form-control-mono"
+                                  placeholder={getPlaceholderForType(input.type_)}
+                                  value={inputValues[`${func.name}-${input.name}`] || ""}
+                                  onChange={(e) => handleInputChange(func.name, input.name, e.target.value)}
+                                />
+                              )}
                             </div>
                           );
                         })}
