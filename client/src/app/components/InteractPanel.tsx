@@ -14,6 +14,16 @@ interface InteractPanelProps {
   projectName?: string;
 }
 
+
+
+  // Check for VM trap / panic pattern
+  if (errMsg.includes("UnreachableCodeReached") || errMsg.includes("InvalidAction")) {
+    return "VM Execution Error (Trap): The contract panicked or hit an unreachable path (e.g. assert fail, unwrap on None, or division by zero).";
+  }
+
+  return errMsg;
+}
+
 export default function InteractPanel({
   abi,
   contractId,
@@ -48,51 +58,31 @@ export default function InteractPanel({
   };
 
   // Maps UI input to ScVal
-  const parseInputToScVal = (value: any, type: any): any => {
-    if (typeof type === "string") {
-      switch (type.toLowerCase()) {
-        case "string":
-          return StellarSdk.xdr.ScVal.scvString(String(value));
-        case "symbol":
-          return StellarSdk.xdr.ScVal.scvSymbol(String(value));
-        case "u32":
-          return StellarSdk.xdr.ScVal.scvU32(Number(value));
-        case "i32":
-          return StellarSdk.xdr.ScVal.scvI32(Number(value));
-        case "u64":
-          return StellarSdk.nativeToScVal(BigInt(value));
-        case "i64":
-          return StellarSdk.nativeToScVal(BigInt(value));
-        case "bool":
-          return StellarSdk.xdr.ScVal.scvBool(value === "true" || value === true || value === "1");
-        case "address":
-          return StellarSdk.xdr.ScVal.scvAddress(new StellarSdk.Address(String(value)).toScAddress());
-        default:
-          return StellarSdk.nativeToScVal(value);
-      }
-    } else if (type && typeof type === "object") {
-      if ("vec" in type) {
-        // Handle Vector types
-        try {
-          const arr = Array.isArray(value) ? value : JSON.parse(value);
-          const parsedElements = arr.map((item: any) => parseInputToScVal(item, type.vec.element_type));
-          return StellarSdk.xdr.ScVal.scvVec(parsedElements);
-        } catch {
-          // If JSON parse fails, split by comma
-          const arr = String(value).split(",").map(v => v.trim());
-          const parsedElements = arr.map((item: any) => parseInputToScVal(item, type.vec.element_type));
-          return StellarSdk.xdr.ScVal.scvVec(parsedElements);
-        }
-      }
+  const mapInputToScVal = (val: string, typeStr: string): StellarSdk.xdr.ScVal => {
+    const trimmed = val.trim();
+    if (typeStr === "u32" || typeStr === "i32") {
+      return StellarSdk.nativeToScVal(parseInt(trimmed, 10), { type: typeStr as any });
     }
-    return StellarSdk.nativeToScVal(value);
+    if (typeStr === "u64" || typeStr === "i64" || typeStr === "u128" || typeStr === "i128") {
+      return StellarSdk.nativeToScVal(BigInt(trimmed), { type: typeStr as any });
+    }
+    if (typeStr === "bool") {
+      return StellarSdk.nativeToScVal(trimmed.toLowerCase() === "true");
+    }
+    if (typeStr === "string") {
+      return StellarSdk.nativeToScVal(trimmed);
+    }
+    if (typeStr === "address") {
+      return StellarSdk.Address.fromString(trimmed).toScVal();
+    }
+    // Default fallback
+    return StellarSdk.nativeToScVal(trimmed);
   };
 
-  const handleInvoke = async (funcName: string, inputs: any[]) => {
-    if (!contractId) return;
+  const handleInvoke = async (funcName: string, inputsList: any[]) => {
+    if (!contractId || invoking[funcName]) return;
     
     setInvoking((prev) => ({ ...prev, [funcName]: true }));
-    setOutputs((prev) => ({ ...prev, [funcName]: "" }));
     addLog(`Invoking contract method "${funcName}"...`, "info");
 
     try {
@@ -103,33 +93,34 @@ export default function InteractPanel({
       if (walletType === "playground") {
         playgroundSecret = getOrCreatePlaygroundSecret();
         userAddress = getPublicKeyFromSecret(playgroundSecret);
-        if (!userAddress) {
-          throw new Error("Playground wallet is not initialized.");
-        }
       } else {
-        const userAddressResult = await getAddress();
-        userAddress = typeof userAddressResult === "string" ? userAddressResult : (userAddressResult?.address || "");
-        if (!userAddress) {
-          throw new Error("Freighter wallet is not connected.");
+        const userAddressFreighter = await getAddress();
+        if (userAddressFreighter && typeof userAddressFreighter === "string") {
+          userAddress = userAddressFreighter;
+        } else if (userAddressFreighter && (userAddressFreighter as any).address) {
+          userAddress = (userAddressFreighter as any).address;
         }
+      }
+
+      if (!userAddress) {
+        throw new Error("No active wallet connected. Open the Deploy panel to connect.");
       }
 
       const rpcServer = new StellarSdk.rpc.Server(rpcUrl);
       const horizonServer = new StellarSdk.Horizon.Server(horizonUrl);
 
-      // Map dynamic inputs to ScVal
-      const parsedArgs = inputs.map((input) => {
-        const rawVal = inputValues[`${funcName}-${input.name}`];
-        if (rawVal === undefined || rawVal === "") {
-          throw new Error(`Input field "${input.name}" is required.`);
-        }
-        return parseInputToScVal(rawVal, input.type_);
-      });
+      // Build parameters ScVal vector
+      const paramsScVals: StellarSdk.xdr.ScVal[] = [];
+      for (const input of inputsList) {
+        const val = inputValues[`${funcName}-${input.name}`] || "";
+        const inputTypeStr = typeof input.type_ === "object" ? JSON.stringify(input.type_) : String(input.type_);
+        paramsScVals.push(mapInputToScVal(val, inputTypeStr));
+      }
 
-      // Load current account sequence from Horizon
+      // Load source account
       const sourceAccount = await horizonServer.loadAccount(userAddress);
 
-      // Build Transaction
+      // Build contract invocation operation
       let tx = new StellarSdk.TransactionBuilder(sourceAccount, {
         fee: "100",
         networkPassphrase: StellarSdk.Networks.TESTNET,
@@ -137,21 +128,21 @@ export default function InteractPanel({
       .addOperation(StellarSdk.Operation.invokeContractFunction({
         contract: contractId,
         function: funcName,
-        args: parsedArgs,
+        args: paramsScVals,
       }))
       .setTimeout(60)
       .build();
 
-      // Simulate and prepare resource limits
+      // Simulate transaction to get fees and resources
       tx = await rpcServer.prepareTransaction(tx);
 
       let signedTx;
       if (walletType === "playground") {
-        addLog(`Auto-signing invocation using in-browser Playground Wallet...`, "info");
+        addLog("Auto-signing invocation using in-browser Playground Wallet...", "info");
         tx.sign(StellarSdk.Keypair.fromSecret(playgroundSecret));
         signedTx = tx;
       } else {
-        addLog(`Requesting Freighter wallet signature to call "${funcName}"...`, "info");
+        addLog("Requesting signature from Freighter wallet...", "info");
         const { signTransaction } = await import("@stellar/freighter-api");
         const signed = await signTransaction(tx.toXDR(), {
           networkPassphrase: StellarSdk.Networks.TESTNET,
@@ -167,14 +158,14 @@ export default function InteractPanel({
         );
       }
 
-      addLog(`Submitting transaction to Stellar ledger...`, "info");
+      addLog("Submitting transaction to Stellar ledger...", "info");
       const sendResponse = await rpcServer.sendTransaction(signedTx);
 
       if (sendResponse.status === "ERROR") {
         throw new Error(`Transaction submission error: ${JSON.stringify((sendResponse as any).errorResult || sendResponse)}`);
       }
 
-      // Poll transaction
+      // Poll transaction status
       let txResponse = await rpcServer.getTransaction(sendResponse.hash);
       while ((txResponse.status as any) === "PENDING" || txResponse.status === "NOT_FOUND") {
         await new Promise((resolve) => setTimeout(resolve, 1500));
@@ -189,7 +180,9 @@ export default function InteractPanel({
       const nativeValue = txResponse.returnValue 
         ? StellarSdk.scValToNative(txResponse.returnValue as any) 
         : null;
-      const outputString = typeof nativeValue === "object" ? JSON.stringify(nativeValue, null, 2) : String(nativeValue);
+      const outputString = typeof nativeValue === "object" && nativeValue !== null
+        ? JSON.stringify(nativeValue, (key, value) => typeof value === "bigint" ? value.toString() : value, 2)
+        : String(nativeValue);
 
       addLog(`Method "${funcName}" returned: ${outputString}`, "success");
       setOutputs((prev) => ({ ...prev, [funcName]: outputString }));
@@ -199,8 +192,9 @@ export default function InteractPanel({
 
     } catch (err: any) {
       console.error(err);
-      addLog(`Invocation failed: ${err.message}`, "error");
-      setOutputs((prev) => ({ ...prev, [funcName]: `Error: ${err.message}` }));
+      const friendlyMsg = getFriendlyError(err.message || String(err), abi);
+      addLog(`Invocation failed: ${friendlyMsg}`, "error");
+      setOutputs((prev) => ({ ...prev, [funcName]: `Error: ${friendlyMsg}` }));
     } finally {
       setInvoking((prev) => ({ ...prev, [funcName]: false }));
     }
